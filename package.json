@@ -1,0 +1,13 @@
+{
+  "name": "game",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev:api": "cd apps/api && pnpm dev",
+    "dev:web": "cd apps/web && pnpm dev",
+    "build:web": "cd apps/web && pnpm build",
+    "lint:web": "cd apps/web && pnpm lint",
+    "prisma:generate": "cd apps/api && pnpm prisma:generate",
+    "prisma:migrate": "cd apps/api && pnpm prisma:migrate"
+  }
+}

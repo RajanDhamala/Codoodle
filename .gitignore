@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+coverage/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Local/editor files
+.DS_Store
+*.log
+Untitled
+.codex/
+.agents/
+
+# Generated clients
+generated/prisma/
+apps/api/generated/prisma/
+
+# Docker/local runtime
+.cache/
+tmp/

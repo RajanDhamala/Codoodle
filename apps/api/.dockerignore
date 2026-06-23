@@ -1,0 +1,7 @@
+node_modules
+.env
+.codex
+.agents
+generated/prisma
+npm-debug.log*
+pnpm-debug.log*
