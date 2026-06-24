@@ -14,31 +14,32 @@ const api: AxiosInstance = axios.create({
     import.meta.env.VITE_API_URL ||
     `${window.location.protocol}//${window.location.hostname}:3000`,
   timeout: 10000,
+  withCredentials: true,
   headers: { "Content-Type": "application/json" },
-  withCredentials: true, // send cookies automatically
 });
 
-// Optional request interceptor (token or other headers)
-// api.interceptors.request.use(...);
-
-// Response interceptor
 api.interceptors.response.use(
-  (response: AxiosResponse<ApiResponse>) => {
-    const res = response.data;
-    if (!res.success) {
-      // Backend returned ApiError format
-      return Promise.reject(res);
+  (response) => {
+    const payload = response.data as ApiResponse | unknown;
+
+    if (
+      payload &&
+      typeof payload === "object" &&
+      "success" in payload
+    ) {
+      const apiResponse = payload as ApiResponse;
+      if (!apiResponse.success) {
+        return Promise.reject(apiResponse);
+      }
+
+      return apiResponse.data as unknown as AxiosResponse;
     }
-    return res.data as unknown as AxiosResponse<ApiResponse>; // only return the actual data
+
+    return payload as AxiosResponse;
   },
   (error) => {
-    if (error.response?.status === 401) {
-      console.error("Unauthorized, redirect to login...");
-      window.location.href = "/login";
-    }
     return Promise.reject(error.response?.data || error);
   }
 );
 
 export default api;
-;

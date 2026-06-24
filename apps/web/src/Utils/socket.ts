@@ -7,7 +7,6 @@ const socketBaseUrl = (
 
 const createSocket = () => {
   return io(socketBaseUrl, {
-    withCredentials: true,
     transports: ["websocket", "polling"],
     reconnectionAttempts: 3,
   });
