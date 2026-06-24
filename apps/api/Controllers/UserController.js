@@ -1,9 +1,11 @@
 import asyncHandler from "../Utils/AsyncHandler.js"
+import { CreateInfo } from "../Utils/AuthUtils.js"
 import ApiError from "../Utils/ApiError.js"
 import ApiResponse from "../Utils/ApiResponse.js"
 import jwt from "jsonwebtoken"
 import prisma from "../Utils/Prisma.js"
 import { CreateAccessToken, CreateRefreshToken } from "../Utils/AuthUtils.js"
+import { v4 as uuidv4 } from "uuid";
 
 const HandelOauthCallback = asyncHandler(async (req, res) => {
   try {
@@ -84,4 +86,29 @@ const HandelOauthCallback = asyncHandler(async (req, res) => {
   }
 })
 
-export { HandelOauthCallback }
+
+const SetupUser = asyncHandler(async (req, res) => {
+  const { name, avatar } = req.body
+
+  console.log("name", name)
+  console.log("prefrences", avatar)
+  const usrId = uuidv4()
+  const token = CreateInfo(usrId, name, avatar)
+
+  res.cookie("info", token, {
+    sameSite: "strict",
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    timeout: 1000 * 60 * 60 * 24 * 7, // 7 days
+  })
+
+
+  return res.status(200).json({
+    "message": "User Info Setup Successfully",
+    "data": {
+      "id": usrId,
+    }
+  })
+})
+
+export { HandelOauthCallback, SetupUser }

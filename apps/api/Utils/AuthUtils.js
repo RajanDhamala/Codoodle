@@ -29,7 +29,19 @@ const CreateRefreshToken = (id, email, fullname, avatar) => {
   return jwt.sign(payload, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
 }
 
+const CreateInfo = (id, username, avatar) => {
+  const payload = {
+    id: id,
+    username,
+    joinedAt: Date.now(),
+    avatar,
+  };
+  return jwt.sign(payload, process.env.INFO_SECRET, { expiresIn: '7d' });
+}
+
+
 export {
   hashPassword, verifyPassword,
-  CreateAccessToken, CreateRefreshToken
+  CreateAccessToken, CreateRefreshToken,
+  CreateInfo
 }
