@@ -7,7 +7,6 @@ import { createSocket } from "../Utils/socket";
 import { GameSessionView } from "./GameSessionView";
 import { GuestProfileSetup } from "./GuestProfileSetup";
 import type {
-  GameResult,
   GameSettings,
   Point,
   RoleInfo,
@@ -142,7 +141,6 @@ const GamePage = () => {
   const [strokeColor, setStrokeColor] = useState("#111827");
   const [strokeSize, setStrokeSize] = useState(7);
   const [draftStroke, setDraftStroke] = useState<Stroke | null>(null);
-  const [livePreviewStroke, setLivePreviewStroke] = useState<Stroke | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [chatDraft, setChatDraft] = useState("");
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -212,9 +210,8 @@ const GamePage = () => {
     context.fillRect(0, 0, width, height);
 
     room?.strokes.forEach((stroke) => drawStroke(context, stroke, width, height));
-    if (livePreviewStroke) drawStroke(context, livePreviewStroke, width, height);
     if (draftStroke) drawStroke(context, draftStroke, width, height);
-  }, [draftStroke, livePreviewStroke, room?.strokes]);
+  }, [draftStroke, room?.strokes]);
 
   useEffect(() => {
     if (!guestProfile) {
@@ -227,7 +224,7 @@ const GamePage = () => {
     setConnectionStatus("connecting");
     setConnectionError("");
 
-    const nextSocket = createSocket(guestProfile);
+    const nextSocket = createSocket();
     setSocket(nextSocket);
 
     nextSocket.on("connect", () => {
@@ -248,56 +245,29 @@ const GamePage = () => {
       setCurrentUser(user);
     });
 
-    nextSocket.on("room:snapshot", (snapshot: RoomSnapshot) => {
-      setRoom(snapshot);
-      if (snapshot.phase !== "drawing") {
-        setLivePreviewStroke(null);
-      }
-      if (snapshot.phase === "lobby") {
-        setRoleInfo(null);
-      }
+    nextSocket.on("group-created", ({ room }: { room: RoomSnapshot }) => {
+      setRoom(room);
+      setRoleInfo(null);
+      setJoinCode(room.code);
     });
 
-    nextSocket.on("game:role", (role: RoleInfo) => {
-      setRoleInfo(role);
+    nextSocket.on("group-joined", ({ room }: { room: RoomSnapshot }) => {
+      setRoom(room);
+      setRoleInfo(null);
     });
 
-    nextSocket.on("room:error", ({ message }: { message: string }) => {
+    nextSocket.on("group-updated", ({ room }: { room: RoomSnapshot }) => {
+      setRoom(room);
+    });
+
+    nextSocket.on("group-error", ({ message }: { message: string }) => {
       toast.error(message);
     });
 
-    nextSocket.on("room:kicked", ({ message }: { message: string }) => {
-      toast.error(message);
+    nextSocket.on("group-left", () => {
       setRoom(null);
       setRoleInfo(null);
       setDraftStroke(null);
-      setLivePreviewStroke(null);
-    });
-
-    nextSocket.on("room:left", () => {
-      setRoom(null);
-      setRoleInfo(null);
-      setDraftStroke(null);
-      setLivePreviewStroke(null);
-    });
-
-    nextSocket.on("draw:preview", (stroke: Stroke) => {
-      setLivePreviewStroke(stroke);
-    });
-
-    nextSocket.on("draw:preview-clear", ({ playerId }: { playerId?: string }) => {
-      setLivePreviewStroke((previousStroke) => {
-        if (!previousStroke) return previousStroke;
-        if (!playerId || previousStroke.playerId === playerId) return null;
-        return previousStroke;
-      });
-    });
-
-    nextSocket.on("game:results", (result: GameResult) => {
-      setLivePreviewStroke(null);
-      setRoom((previousRoom) =>
-        previousRoom ? { ...previousRoom, phase: "results", result } : previousRoom
-      );
     });
 
     return () => {
@@ -335,7 +305,7 @@ const GamePage = () => {
 
   const createRoom = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    socket?.emit("room:create", { settings: settingsDraft });
+    socket?.emit("create-group", { settings: settingsDraft });
   };
 
   const joinRoom = (event: React.FormEvent<HTMLFormElement>) => {
@@ -345,19 +315,21 @@ const GamePage = () => {
       return;
     }
 
-    socket?.emit("room:join", { roomCode: joinCode.trim().toUpperCase() });
+    socket?.emit("join-group", { roomId: joinCode.trim().toUpperCase() });
   };
 
   const updateSettings = () => {
-    socket?.emit("room:update-settings", { settings: settingsDraft });
+    setRoom((previousRoom) =>
+      previousRoom ? { ...previousRoom, settings: settingsDraft } : previousRoom
+    );
   };
 
   const startGame = () => {
-    socket?.emit("game:start");
+    // Game phases are intentionally not part of the minimal socket test.
   };
 
   const leaveRoom = () => {
-    socket?.emit("room:leave");
+    socket?.emit("leave-group");
   };
 
   const copyRoomCode = async () => {
@@ -372,32 +344,26 @@ const GamePage = () => {
   };
 
   const kickPlayer = (playerId: string) => {
-    socket?.emit("room:kick", { playerId });
+    void playerId;
   };
 
   const submitDraftStroke = () => {
     if (!draftStroke) return;
-    socket?.emit("draw:submit", { stroke: draftStroke });
-    socket?.emit("draw:preview-clear");
     setDraftStroke(null);
   };
 
   const undoDraftStroke = () => {
-    socket?.emit("draw:preview-clear");
     setDraftStroke(null);
     setIsDrawing(false);
   };
 
   const sendChat = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!chatDraft.trim()) return;
-
-    socket?.emit("chat:send", { message: chatDraft.trim() });
     setChatDraft("");
   };
 
   const submitVote = (playerId: string) => {
-    socket?.emit("vote:submit", { playerId });
+    void playerId;
   };
 
   const handlePointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -416,7 +382,6 @@ const GamePage = () => {
       } satisfies Stroke;
 
       setDraftStroke(nextStroke);
-      socket?.emit("draw:preview", { stroke: nextStroke });
       return;
     }
 
@@ -429,7 +394,6 @@ const GamePage = () => {
     } satisfies Stroke;
 
     setDraftStroke(nextStroke);
-    socket?.emit("draw:preview", { stroke: nextStroke });
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -445,7 +409,6 @@ const GamePage = () => {
           points: [...(previousStroke.points || []), point],
         };
 
-        socket?.emit("draw:preview", { stroke: nextStroke });
         return nextStroke;
       }
 
@@ -454,7 +417,6 @@ const GamePage = () => {
         end: point,
       };
 
-      socket?.emit("draw:preview", { stroke: nextStroke });
       return nextStroke;
     });
   };
@@ -470,16 +432,10 @@ const GamePage = () => {
       if (previousStroke.kind === "path" || previousStroke.kind === "eraser") {
         const points = [...(previousStroke.points || []), point];
         const nextStroke = points.length > 1 ? { ...previousStroke, points } : null;
-        if (nextStroke) {
-          socket?.emit("draw:preview", { stroke: nextStroke });
-        } else {
-          socket?.emit("draw:preview-clear");
-        }
         return nextStroke;
       }
 
       const nextStroke = { ...previousStroke, end: point };
-      socket?.emit("draw:preview", { stroke: nextStroke });
       return nextStroke;
     });
   };

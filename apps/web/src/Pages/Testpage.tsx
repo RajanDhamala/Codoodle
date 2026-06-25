@@ -2,7 +2,6 @@
 import { useState, useEffect } from "react";
 import type { Socket } from "socket.io-client";
 import { createSocket, socketBaseUrl } from "../Utils/socket";
-import { loadGuestProfile } from "../Utils/guestProfile";
 
 const TestPage = () => {
   const [isConnected, setIsConnected] = useState(false);
@@ -10,10 +9,7 @@ const TestPage = () => {
   const [socket, setSocket] = useState<Socket | null>(null);
 
   useEffect(() => {
-    const profile = loadGuestProfile();
-    if (!profile) return;
-
-    const connection = createSocket(profile);
+    const connection = createSocket();
     setIsConnecting(true);
     setSocket(connection);
 

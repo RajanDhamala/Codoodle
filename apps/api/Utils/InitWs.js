@@ -1,4 +1,5 @@
 import jwt from "jsonwebtoken";
+import { v4 as uuidv4 } from 'uuid';
 import cookie from "cookie";
 let socketInstance;
 
@@ -25,6 +26,28 @@ const InitWs = async (io) => {
   io.on("connection", (socket) => {
     const userdata = ActiveUser.get(socket.id)
     console.log("user connected", userdata)
+
+
+    socket.on("create-group", (data) => {
+      console.log("data:", data)
+      const roomId = uuidv4()
+      socket.join(roomId)
+      socket.emit("group-created", { roomId }); // 
+    })
+
+
+    socket.on("join-group", (data) => {
+      const roomId = data.id
+      console.log("room id:", data.id)
+      if (!io.sockets.adapter.rooms.has(roomId)) {
+        return socket.emit("error", { message: "Room not found" });
+      }
+      socket.join(roomId)
+      socket.to(roomId).emit("user-joined", {
+        user: ActiveUser.get(socket.id),
+      });
+    })
+
     socket.on("disconnect", () => {
       console.log("user disconnected")
       ActiveUser.delete(socket.id)
