@@ -9,6 +9,7 @@ import { Toaster } from "react-hot-toast";
 import useUserStore from "./UserStore.tsx";
 import api from "./Utils/AxiosWrapper.ts";
 import { sanitizeAvatarConfig, type GuestProfile } from "./Utils/guestProfile.ts";
+import CanvasPage from "./Pages/CanvasPage.tsx"
 
 type ServerUser = {
   id?: string | number;
@@ -95,6 +96,7 @@ function App() {
             <Route path="/game" element={<LazyGamePage />} />
             <Route path="/test" element={<LazyTestPage />} />
 
+            <Route path="/canvas" element={<CanvasPage />} />
             <Route path="*" element={<div className="p-10 text-center text-red-500 font-bold">404 | Page Not Found</div>} />
           </Routes>
         </Suspense>
