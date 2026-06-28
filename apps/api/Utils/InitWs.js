@@ -1,15 +1,16 @@
 import jwt from "jsonwebtoken";
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4 } from "uuid";
 import cookie from "cookie";
 let socketInstance;
 
-
-const ActiveUser = new Map()
+const ActiveUser = new Map();
+const Rooms = new Map()
 
 const InitWs = async (io) => {
   io.use((socket, next) => {
     const data = cookie.parse(socket.handshake.headers.cookie || "");
-    const token = data.info
+    const token = data.info;
+    console.log("token:", token)
     try {
       const decoded = jwt.verify(token, process.env.INFO_SECRET);
       ActiveUser.set(socket.id, {
@@ -17,40 +18,84 @@ const InitWs = async (io) => {
         username: decoded.username,
       });
     } catch (err) {
-      console.error("Socket handshake error:", err);
+      console.error("Socket handshake error:", err)
       return next(new Error("Unauthorized"));
     }
     return next();
   });
 
+
+  const getGroupMembers = (roomId) => {
+    const socketIds = io.sockets.adapter.rooms.get(roomId)
+    if (!socketIds) return []
+
+    return Array.from(socketIds)
+      .map((id) => ActiveUser.get(id))
+      .filter(Boolean);
+  }
+
   io.on("connection", (socket) => {
-    const userdata = ActiveUser.get(socket.id)
-    console.log("user connected", userdata)
+    const userdata = ActiveUser.get(socket.id);
+    console.log("user connected", userdata);
+
+
+    socket.emit("connected", { data: userdata })
+
+
+
+    socket.on("send-stroke", (data) => {
+      const obj = {
+        sendername: userdata.username,
+        id: userdata.id,
+        data: data
+      }
+      console.log("event recived boradcasting", obj)
+      socket.broadcast.emit("recieve-stroke", obj)
+    })
 
 
     socket.on("create-group", (data) => {
-      console.log("data:", data)
-      const roomId = uuidv4()
-      socket.join(roomId)
-      socket.emit("group-created", { roomId }); // 
-    })
-
+      const roomId = uuidv4();
+      const trimmed = roomId.slice(0, 6)
+      socket.join(trimmed);
+      const settings = data.settings
+      console.log("setings:", settings)
+      Rooms.set(trimmed, {
+        settings,
+        cretedAt: Date.now(),
+        owner: data.currentUser,
+      })
+      socket.emit("group-created", { trimmed });
+    });
 
     socket.on("join-group", (data) => {
-      const roomId = data.id
-      console.log("room id:", data.id)
-      if (!io.sockets.adapter.rooms.has(roomId)) {
-        return socket.emit("error", { message: "Room not found" });
-      }
-      socket.join(roomId)
-      socket.to(roomId).emit("user-joined", {
+      console.log("Data:", data)
+      const roomId = data.id;
+      console.log("room id:", data.id);
+      socket.join(roomId);
+      socket.emit("group-joined", {
+        roomId,
+        members: getGroupMembers(roomId),
+        settings: Rooms.get(data.id)
+      });
+      socket.to(roomId).emit("new-user-joined", {
+        user: ActiveUser.get(socket.id)
+      })
+    });
+
+    socket.on("send-group-message", (data) => {
+      console.log("group msg recived:", data)
+      socket.to(data.id).emit("recive-group-message", {
         user: ActiveUser.get(socket.id),
+        message: data.message,
       });
     })
 
+
+
     socket.on("disconnect", () => {
-      console.log("user disconnected")
-      ActiveUser.delete(socket.id)
+      console.log("user disconnected");
+      ActiveUser.delete(socket.id);
     });
   });
 
