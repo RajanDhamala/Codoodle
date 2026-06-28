@@ -27,9 +27,10 @@ const CanvasPage = () => {
     color: null,
     width: null
   })
+  const [strokeIndex, setstrokeIndex] = useState<Number>(0)
 
   const [Histry, setHistry] = useState<Stroke[]>([])
-
+  const [tempHistry, settempHistry] = useState()
   const dummyColor = ["red", "blue", "green", "yellow", "brown", "purple", "pink", "black"]
 
   useEffect(() => {
@@ -48,6 +49,11 @@ const CanvasPage = () => {
     ctx.lineWidth = strokeSize
     ctx.lineCap = "round"
   }, [])
+
+
+  useEffect(() => {
+    setstrokeIndex(Histry.length)
+  }, [Histry])
 
 
   const onMouseDown = (e: React.MouseEvent<HTMLCanvasElement, MouseEvent>) => {
@@ -80,12 +86,22 @@ const CanvasPage = () => {
     const width = ctx.lineWidth
     currentStroke.width = width
     currentStroke.color = String(selected)
+    console.log("selected width:", width)
     setHistry((prev) => {
       return [
         ...prev, currentStroke
       ]
     })
+    setcurrentStroke({
+      initial: null,
+      intermediate: [],
+      final: null,
+      color: null,
+      width: null
+    })
   }
+
+
 
   const onMouseMove = (e) => {
     if (!isDrawing) {
@@ -103,6 +119,109 @@ const CanvasPage = () => {
     currentStroke.intermediate.push(pos)
   }
 
+
+  const HandelColorSelect = (color) => {
+    if (isDrawing) {
+      setIsDrawing(false)
+    }
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+    console.log("picked color:", color)
+    ctx.strokeStyle = color
+  }
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+    ctx.lineWidth = strokeSize
+  }, [strokeSize])
+
+  let huhu
+
+  const HandelUndo = (e) => {
+    console.log("undoing stroke")
+    // Testfxn(e)
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+
+    const strokeLengh = Histry.length
+    console.log("str", strokeLengh)
+    settempHistry((prev) => {
+      return Histry
+    })
+    const temp = Histry
+    huhu = Histry
+    // temp.pop()
+    huhu.pop()
+    setstrokeIndex(temp.length - 1)
+    ctx.clearRect(0, 0, canvas.height, canvas.width)
+    huhu.forEach((item, i) => {
+      console.log("current item:", item)
+      const color = item.color
+      const width = item.width
+      ctx.beginPath()
+      ctx.lineWidth = Number(width)
+      ctx.lineCap = "butt"
+      ctx.strokeStyle = color
+      ctx.moveTo(item.initial?.x, item.initial.y)
+
+      item.intermediate.forEach((position, j) => {
+        ctx.lineTo(position.x, position.y)
+        ctx.stroke()
+      })
+      ctx.lineTo(item.final.x, item.final?.y)
+      ctx.stroke()
+      ctx.closePath()
+      console.log("width:", width)
+    })
+  }
+
+  // const Testfxn = (e) => {
+  //   console.log("stroke histry:", Histry)
+  //   const canvas = canvasRef.current
+  //   if (!canvas) return
+  //
+  //   const ctx = canvas.getContext("2d")
+  //   if (!ctx) return
+  //
+  //   if (Histry.length == 0) {
+  //     console.log("no stroked to undo")
+  //     return
+  //   }
+  //   ctx.clearRect(0, 0, canvas.height, canvas.width)
+  //   Histry.forEach((item, i) => {
+  //     console.log("current item:", item)
+  //     const color = item.color
+  //     const width = item.width
+  //     ctx.beginPath()
+  //     ctx.lineCap = width
+  //     ctx.strokeStyle = color
+  //     ctx.moveTo(item.initial?.x, item.initial.y)
+  //
+  //     item.intermediate.forEach((position, j) => {
+  //       ctx.lineTo(position.x, position.y)
+  //       ctx.stroke()
+  //     })
+  //     ctx.lineTo(item.final.x, item.final?.y)
+  //     ctx.stroke()
+  //     ctx.closePath()
+  //   })
+  // }
+
+
+  const HandleClear = () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
 
   const DrawStroke = () => {
     const canavas = canvasRef.current
@@ -125,8 +244,9 @@ const CanvasPage = () => {
       ctx.stroke()
     })
 
-    ctx.moveTo(currentStroke.final.x, currentStroke.final.y)
-
+    ctx.lineTo(currentStroke.final.x, currentStroke.final.y)
+    ctx.stroke()
+    ctx.closePath()
   }
 
   const getMousePos = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -139,46 +259,43 @@ const CanvasPage = () => {
     };
   };
 
-  const HandelColorSelect = (color) => {
-    if (isDrawing) {
-      setIsDrawing(false)
-    }
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-    console.log("picked color:", color)
-    ctx.strokeStyle = color
-  }
-
-
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-    ctx.lineWidth = strokeSize
-  }, [strokeSize])
-
-
-  const HandelUndo = (e) => {
-    console.log("undoing stroke")
-    DrawStroke()
-  }
-
-
-  const HandleClear = () => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-  }
-
-
 
   const HandelRedo = (e) => {
     console.log("redoing stroke")
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+
+    ctx.clearRect(0, 0, canvas.height, canvas.width)
+    console.log("stroke index:", strokeIndex)
+    console.log("realtive length:", relativelengh)
+    Histry.forEach((item, i) => {
+      if (i >= strokeIndex) {
+        return
+      }
+      console.log("current item:", item)
+      const color = item.color
+      const width = item.width
+      ctx.beginPath()
+      ctx.lineCap = width
+      ctx.strokeStyle = color
+      ctx.moveTo(item.initial?.x, item.initial.y)
+
+      item.intermediate.forEach((position, j) => {
+        ctx.lineTo(position.x, position.y)
+        ctx.stroke()
+      })
+      ctx.lineTo(item.final.x, item.final?.y)
+      ctx.stroke()
+      ctx.closePath()
+    })
+    setstrokeIndex((prev) => {
+      Number(prev) + 1
+    })
+
+
+
   }
 
   return (
