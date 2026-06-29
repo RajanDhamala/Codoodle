@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState } from "react";
 import { Eraser, ArrowLeft, ArrowRight } from "lucide-react";
 import { io } from "socket.io-client"
+import { v4 as uuidv4 } from 'uuid';
 
 const CanvasPage = () => {
 
@@ -14,6 +15,7 @@ const CanvasPage = () => {
     final: Points | null,
     color: string | null,
     width: number | null,
+    id?: Number | string | null,
   }
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -25,8 +27,10 @@ const CanvasPage = () => {
     intermediate: [],
     final: null,
     color: null,
-    width: null
+    width: null,
+    id: null,
   })
+  const activeIdref = useRef(null)
   const [strokeIndex, setstrokeIndex] = useState<Number>(-1)
   const [Histry, setHistry] = useState<Stroke[]>([])
   const dummyColor = ["red", "blue", "green", "yellow", "brown", "purple", "pink", "black"]
@@ -75,8 +79,6 @@ const CanvasPage = () => {
     ctx.lineWidth = strokeSize
     // canvas.style.cursor = "not-allowed";
     // will be shown when not user turn
-
-
     ctx.lineCap = "round"
 
     canvas.style.cursor = "crosshair";
@@ -95,6 +97,58 @@ const CanvasPage = () => {
     const pos = getMousePos(e)
     ctx.moveTo(pos.x, pos.y)
     currentStroke.initial = { x: pos.x, y: pos.y }
+    const color = ctx.strokeStyle
+    const width = ctx.lineWidth
+    const data = { color, width, inital: { x: pos.x, y: pos.y } }
+    StartEventStream(data)
+  }
+
+  const isActiveRef = useRef(false)
+  const isBlockedref = useRef(false)
+  const bufferRef = useRef(0)
+
+  const Thottler = (data: any) => {
+    if (isActiveRef.current) {
+      return
+    }
+    const bufferIndex = bufferRef.current
+    const arrayLength = data.intermediate.length
+
+    console.log("buufer index:", bufferIndex, "length:", arrayLength)
+    const duplicated = data.intermediate.slice(bufferIndex, arrayLength)
+    const bufferLength2send = duplicated.length
+    console.log("sent length:", bufferLength2send)
+    if (bufferLength2send == 0) {
+      console.log("not enough stores to emit")
+      return
+    }
+    bufferRef.current = arrayLength
+
+    isActiveRef.current = true
+    setTimeout(() => {
+      SendEventStream(duplicated)
+      isActiveRef.current = false
+    }, 250)
+  }
+
+  const StartEventStream = (data) => {
+    const uuid = uuidv4()
+    activeIdref.current = uuid
+    socket.emit("start-stream", { data, uuid })
+  }
+  const SendEventStream = (data: any) => {
+    if (isBlockedref.current) {
+      return
+    }
+    socket.emit("send-stream", { data, id: activeIdref.current })
+    console.log("event stream sent")
+  }
+
+  const EndEventStream = (data: any) => {
+    socket.emit("end-stream", { data, id: activeIdref.current })
+    console.log("event stream ended")
+    activeIdref.current = null
+    isBlockedref.current = true
   }
 
   const onMouseUp = (e: React.MouseEvent<HTMLCanvasElement, MouseEvent>) => {
@@ -122,7 +176,13 @@ const CanvasPage = () => {
     })
 
     setstrokeIndex((prev) => Number(prev) + 1)
-    EmitStroker(currentStroke)
+    // EmitStroker(currentStroke)
+    const data = {
+      final: currentStroke.final,
+      color: currentStroke.color,
+      width: currentStroke.width,
+    }
+    EndEventStream(data)
     setcurrentStroke({
       initial: null,
       intermediate: [],
@@ -130,6 +190,7 @@ const CanvasPage = () => {
       color: null,
       width: null
     })
+    bufferRef.current = 0
   }
 
 
@@ -147,8 +208,8 @@ const CanvasPage = () => {
 
     const pos = getMousePos(e)
     currentStroke.intermediate.push(pos)
+    Thottler(currentStroke)
   }
-
 
   const HandelColorSelect = (color: string) => {
     if (isDrawing) {
@@ -159,6 +220,7 @@ const CanvasPage = () => {
     const ctx = canvas.getContext("2d")
     if (!ctx) return
     console.log("picked color:", color)
+
     ctx.strokeStyle = color
   }
 
@@ -172,7 +234,6 @@ const CanvasPage = () => {
 
 
   const HandelUndo = () => {
-
     let relativeIndex = strokeIndex
     console.log("inital strokeIndex before undo:", relativeIndex)
     console.log("Ready to Undo")
@@ -222,6 +283,7 @@ const CanvasPage = () => {
     if (!ctx) return
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     setstrokeIndex(-1)
+    activeIdref.current = null
   }
 
 
@@ -281,12 +343,10 @@ const CanvasPage = () => {
     console.log("final strokeIndex after redo:", relativeIndex)
   }
 
-
-  const EmitStroker = (data: any) => {
-    socket.emit("send-stroke", data)
-    console.log("stroke emmited to we")
-  }
-
+  // const EmitStroker = (data: any) => {
+  //   socket.emit("send-stroke", data)
+  //   console.log("stroke emmited to we")
+  // }
 
   const DrawStroke = (data: any) => {
     console.log("ready to draw stroke btw", data)
@@ -327,6 +387,9 @@ const CanvasPage = () => {
     }
   }, [socket])
 
+
+
+
   return (
     <>
       <div className="flex flex-col justify-center items-center h-screen">
@@ -338,8 +401,8 @@ const CanvasPage = () => {
           onPointerDown={onMouseDown}
           onPointerMove={onMouseMove}
           onPointerUp={onMouseUp}
-          onPointerCancel={onMouseUp}
-          onPointerLeave={onMouseUp}
+        // onPointerCancel={onMouseUp}
+        // onPointerLeave={onMouseUp}
         />
         <div className="grid grid-rows-2 grid-flow-col border-1 border-dark">
           {
