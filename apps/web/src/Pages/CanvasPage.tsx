@@ -19,7 +19,8 @@ const CanvasPage = () => {
   }
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
+  const isUDrawing = useRef(false)
+  const isOpponentDrawing = useRef(false)
   const [bgColor, setbgColor] = useState("white")
   const [strokeSize, setstrokeSize] = useState(5)
   const [currentStroke, setcurrentStroke] = useState<Stroke>({
@@ -30,6 +31,24 @@ const CanvasPage = () => {
     width: null,
     id: null,
   })
+
+  const localStrokeRef = useRef<Stroke>({
+    initial: null,
+    intermediate: [],
+    final: null,
+    color: null,
+    width: null,   // <- add this
+    id: null,
+  })
+  const remoteStrokeRef = useRef<Stroke>({
+    initial: null,
+    intermediate: [],
+    final: null,
+    color: null,
+    width: null,   // <- and this
+    id: null,
+  })
+
   const activeIdref = useRef(null)
   const [strokeIndex, setstrokeIndex] = useState<Number>(-1)
   const [Histry, setHistry] = useState<Stroke[]>([])
@@ -85,23 +104,7 @@ const CanvasPage = () => {
   }, [])
 
 
-  const onMouseDown = (e: React.MouseEvent<HTMLCanvasElement, MouseEvent>) => {
-    if (!isDrawing) {
-      setIsDrawing(true)
-    }
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-    ctx.beginPath()
-    const pos = getMousePos(e)
-    ctx.moveTo(pos.x, pos.y)
-    currentStroke.initial = { x: pos.x, y: pos.y }
-    const color = ctx.strokeStyle
-    const width = ctx.lineWidth
-    const data = { color, width, inital: { x: pos.x, y: pos.y } }
-    StartEventStream(data)
-  }
+
 
   const isActiveRef = useRef(false)
   const isBlockedref = useRef(false)
@@ -114,12 +117,12 @@ const CanvasPage = () => {
     const bufferIndex = bufferRef.current
     const arrayLength = data.intermediate.length
 
-    console.log("buufer index:", bufferIndex, "length:", arrayLength)
+    // console.log("buufer index:", bufferIndex, "length:", arrayLength)
     const duplicated = data.intermediate.slice(bufferIndex, arrayLength)
     const bufferLength2send = duplicated.length
-    console.log("sent length:", bufferLength2send)
+    // console.log("sent length:", bufferLength2send)
     if (bufferLength2send == 0) {
-      console.log("not enough stores to emit")
+      // console.log("not enough stores to emit")
       return
     }
     bufferRef.current = arrayLength
@@ -128,7 +131,7 @@ const CanvasPage = () => {
     setTimeout(() => {
       SendEventStream(duplicated)
       isActiveRef.current = false
-    }, 250)
+    }, 65)
   }
 
   const StartEventStream = (data) => {
@@ -145,22 +148,56 @@ const CanvasPage = () => {
   }
 
   const EndEventStream = (data: any) => {
-    socket.emit("end-stream", { data, id: activeIdref.current })
-    console.log("event stream ended")
-    activeIdref.current = null
-    isBlockedref.current = true
-  }
+    data = currentStroke
+    const bufferIndex = bufferRef.current
+    const arrayLength = data.intermediate.length
 
-  const onMouseUp = (e: React.MouseEvent<HTMLCanvasElement, MouseEvent>) => {
-    if (!isDrawing) {
+
+    console.log("buufer index:", bufferIndex, "length:", arrayLength)
+    const duplicated = data.intermediate.slice(bufferIndex, arrayLength)
+    const bufferLength2send = duplicated.length
+    console.log("sent length:", bufferLength2send)
+
+    if (bufferLength2send == 0) {
+      console.log("not enough stores to emit")
       return
     }
-    setIsDrawing(false)
+    bufferRef.current = arrayLength
+    socket.emit("send-stream", { data: duplicated, id: activeIdref.current })
+    isBlockedref.current = true
+    socket.emit("end-stream", { data: data.final, id: activeIdref.current })
+    console.log("event stream ended")
+    activeIdref.current = null
+  }
+
+  const onMouseDown = (e: React.MouseEvent<HTMLCanvasElement, MouseEvent>) => {
+    if (!isUDrawing.current) {
+      isUDrawing.current = true
+    }
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext("2d")
     if (!ctx) return
-    ctx.closePath()
+    ctx.beginPath()
+    const pos = getMousePos(e)
+    ctx.moveTo(pos.x, pos.y)
+
+    currentStroke.initial = { x: pos.x, y: pos.y }
+    const color = ctx.strokeStyle
+    const width = ctx.lineWidth
+    const data = { color, width, inital: { x: pos.x, y: pos.y } }
+    isBlockedref.current = false
+    StartEventStream(data)
+  }
+
+  const onMouseUp = (e: React.MouseEvent<HTMLCanvasElement, MouseEvent>) => {
+    if (isUDrawing.current) {
+      isUDrawing.current = false
+    }
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
     const pos = getMousePos(e)
 
     ctx.moveTo(pos.x, pos.y)
@@ -169,13 +206,12 @@ const CanvasPage = () => {
     const width = ctx.lineWidth
     currentStroke.width = width
     currentStroke.color = String(selected)
+    ctx.closePath()
     setHistry((prev) => {
-      return [
-        ...prev, currentStroke
-      ]
+      const truncated = prev.slice(0, Number(strokeIndex) + 1)
+      return [...truncated, currentStroke]
     })
-
-    setstrokeIndex((prev) => Number(prev) + 1)
+    setstrokeIndex(() => Histry.length)
     // EmitStroker(currentStroke)
     const data = {
       final: currentStroke.final,
@@ -195,7 +231,7 @@ const CanvasPage = () => {
 
 
   const onMouseMove = (e: React.MouseEvent<HTMLCanvasElement, MouseEvent>) => {
-    if (!isDrawing) {
+    if (!isUDrawing.current) {
       return
     }
     const canvas = canvasRef.current
@@ -212,8 +248,8 @@ const CanvasPage = () => {
   }
 
   const HandelColorSelect = (color: string) => {
-    if (isDrawing) {
-      setIsDrawing(false)
+    if (isUDrawing.current) {
+      isUDrawing.current = false
     }
     const canvas = canvasRef.current
     if (!canvas) return
@@ -241,6 +277,7 @@ const CanvasPage = () => {
     if (!canvas) return
     const ctx = canvas.getContext("2d")
     if (!ctx) return
+    console.log("whole histry:", Histry)
 
     // console.log("objj", Histry)
     // console.log("Histry length:", strokeLengh)
@@ -267,7 +304,6 @@ const CanvasPage = () => {
 
       item.intermediate.forEach((position, j) => {
         ctx.lineTo(position.x, position.y)
-        ctx.stroke()
       })
       ctx.lineTo(item.final.x, item.final?.y)
       ctx.stroke()
@@ -348,42 +384,112 @@ const CanvasPage = () => {
   //   console.log("stroke emmited to we")
   // }
 
-  const DrawStroke = (data: any) => {
-    console.log("ready to draw stroke btw", data)
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-    const orginalcolor = ctx.strokeStyle
-    const orginalwidth = ctx.lineWidth
-    ctx.beginPath()
-    ctx.lineWidth = Number(data.width)
-    ctx.strokeStyle = data.color
-    ctx.moveTo(data.initial?.x, data.initial.y)
-
-    data.intermediate.forEach((position: any, j: number) => {
-      ctx.lineTo(position.x, position.y)
-      ctx.stroke()
-    })
-    ctx.lineTo(data.final.x, data.final?.y)
-    ctx.stroke()
-    ctx.closePath()
-    ctx.strokeStyle = orginalcolor
-    ctx.lineWidth = orginalwidth
-  }
+  // const DrawStroke = (data: any) => {
+  //   console.log("ready to draw stroke btw", data)
+  //   const canvas = canvasRef.current
+  //   if (!canvas) return
+  //   const ctx = canvas.getContext("2d")
+  //   if (!ctx) return
+  //   const orginalcolor = ctx.strokeStyle
+  //   const orginalwidth = ctx.lineWidth
+  //   ctx.beginPath()
+  //   ctx.lineWidth = Number(data.width)
+  //   ctx.strokeStyle = data.color
+  //   ctx.moveTo(data.initial?.x, data.initial.y)
+  //
+  //   data.intermediate.forEach((position: any, j: number) => {
+  //     ctx.lineTo(position.x, position.y)
+  //     ctx.stroke()
+  //   })
+  //   ctx.lineTo(data.final.x, data.final?.y)
+  //   ctx.stroke()
+  //   ctx.closePath()
+  //   ctx.strokeStyle = orginalcolor
+  //   ctx.lineWidth = orginalwidth
+  // }
 
 
   useEffect(() => {
     if (!socket) {
       return
     }
-    socket.on("recieve-stroke", (data: any) => {
-      console.log("some one drew", data)
-      DrawStroke(data.data)
+    // socket.on("recieve-stroke", (data: any) => {
+    //   console.log("some one drew", data)
+    //   DrawStroke(data.data)
+    // })
+
+    socket.on("recieve-start-stream", (data: any) => {
+      console.log("some one started drawing")
+      if (!isOpponentDrawing.current) {
+        isOpponentDrawing.current = true
+      }
+      const canvas = canvasRef.current
+      if (!canvas) return
+      const ctx = canvas.getContext("2d")
+      if (!ctx) return
+      ctx.beginPath()
+      const postion = data.data.data.inital
+      console.log("postion:", postion)
+      ctx.moveTo(postion.x, postion.y)
+      currentStroke.initial = { x: postion.x, y: postion.y }
+      ctx.strokeStyle = data.data.data.color
+      ctx.lineWidth = data.data.data.width
     })
+
+    socket.on("recieve-send-stream", (data: any) => {
+      console.log("some one is drawing", data)
+      if (!isOpponentDrawing.current) {
+        return
+      }
+      // DrawStroke(data.data)
+      const canvas = canvasRef.current
+      if (!canvas) return
+      const ctx = canvas.getContext("2d")
+      if (!ctx) return
+      data.data.data.forEach((res, index) => {
+        ctx.lineTo(res.x, res.y)
+        ctx.stroke()
+        currentStroke.intermediate.push(res)
+      })
+    })
+
+    socket.on("recieve-end-stream", (data: any) => {
+      console.log("some one ended drawing", data)
+      isOpponentDrawing.current = false
+      const pos = data.data.data
+      const canvas = canvasRef.current
+      if (!canvas) return
+      const ctx = canvas.getContext("2d")
+      if (!ctx) return
+
+      ctx.moveTo(pos.x, pos.y)
+      currentStroke.final = { x: pos.x, y: pos.y }
+      const selected = ctx.strokeStyle
+      const width = ctx.lineWidth
+      currentStroke.width = width
+      currentStroke.color = String(selected)
+      ctx.closePath()
+      setHistry((prev) => {
+        const truncated = prev.slice(0, Number(strokeIndex) + 1)
+        return [...truncated, currentStroke]
+      })
+      setstrokeIndex(() => Histry.length /* after truncation, i.e. new last index */)
+      //
+      setcurrentStroke({
+        initial: null,
+        intermediate: [],
+        final: null,
+        color: null,
+        width: null
+      })
+    })
+
 
     return () => {
       socket.off("draw")
+      socket.off("recieve-start-stream")
+      socket.off("recieve-send-stream")
+      socket.off("recieve-end-stream")
     }
   }, [socket])
 
@@ -401,8 +507,8 @@ const CanvasPage = () => {
           onPointerDown={onMouseDown}
           onPointerMove={onMouseMove}
           onPointerUp={onMouseUp}
-        // onPointerCancel={onMouseUp}
-        // onPointerLeave={onMouseUp}
+          onPointerCancel={onMouseUp}
+          onPointerLeave={onMouseUp}
         />
         <div className="grid grid-rows-2 grid-flow-col border-1 border-dark">
           {
