@@ -29,21 +29,14 @@ const CanvasPage = () => {
     intermediate: [],
     final: null,
     color: null,
-    width: null,   // <- add this
+    width: null,
     id: null,
   })
-  const remoteStrokeRef = useRef<Stroke>({
-    initial: null,
-    intermediate: [],
-    final: null,
-    color: null,
-    width: null,   // <- and this
-    id: null,
-  })
-
   const activeIdref = useRef(null)
   const pointerIndexRef = useRef<number>(-1)
+  const historyLengthRef = useRef(0)
   const [Histry, setHistry] = useState<Stroke[]>([])
+  const remoteStrokeMapRef = useRef<Record<string, Stroke>>({})
   const dummyColor = ["red", "blue", "green", "yellow", "brown", "purple", "pink", "black"]
   const [isConnecting, setisConnecting] = useState<Boolean>(false)
   const [isConnected, setisConnected] = useState<Boolean>(false)
@@ -51,8 +44,23 @@ const CanvasPage = () => {
   const localWidthRef = useRef<number>(5)
   const [socket, setSocket] = useState<any>()
 
-  useEffect(() => {
+  const addStrokeToHistory = (stroke: Stroke) => {
+    pointerIndexRef.current = historyLengthRef.current
+    historyLengthRef.current++
 
+    setHistry((prev) => {
+      const updatedHistory: Stroke[] = []
+
+      prev.forEach((item) => {
+        updatedHistory.push(item)
+      })
+
+      updatedHistory.push(stroke)
+      return updatedHistory
+    })
+  }
+
+  useEffect(() => {
     const socketinstance = io("http://localhost:3000", {
       transports: ["websocket", "polling"],
       reconnectionAttempts: 3,
@@ -98,28 +106,50 @@ const CanvasPage = () => {
   const isActiveRef = useRef(false)
   const isBlockedref = useRef(false)
   const bufferRef = useRef(0)
+  const throttleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const collectBufferedPoints = (data: Stroke) => {
+    const points: Points[] = []
+    const bufferIndex = bufferRef.current
+
+    data.intermediate.forEach((position, index) => {
+      if (index >= bufferIndex) {
+        points.push(position)
+      }
+    })
+
+    return points
+  }
+
+  const clearThrottleTimer = () => {
+    if (throttleTimerRef.current) {
+      clearTimeout(throttleTimerRef.current)
+      throttleTimerRef.current = null
+    }
+    isActiveRef.current = false
+  }
 
   const Thottler = (data: any) => {
     if (isActiveRef.current) {
       return
     }
-    const bufferIndex = bufferRef.current
     const arrayLength = data.intermediate.length
 
     // console.log("buufer index:", bufferIndex, "length:", arrayLength)
-    const duplicated = data.intermediate.slice(bufferIndex, arrayLength)
+    const duplicated = collectBufferedPoints(data)
     const bufferLength2send = duplicated.length
     // console.log("sent length:", bufferLength2send)
     if (bufferLength2send == 0) {
       // console.log("not enough stores to emit")
       return
     }
-    bufferRef.current = arrayLength
 
     isActiveRef.current = true
-    setTimeout(() => {
+    throttleTimerRef.current = setTimeout(() => {
       SendEventStream(duplicated)
+      bufferRef.current = arrayLength
       isActiveRef.current = false
+      throttleTimerRef.current = null
     }, 100)
   }
 
@@ -138,12 +168,13 @@ const CanvasPage = () => {
 
   const EndEventStream = (data: any) => {
     data = localStrokeRef.current
-    const bufferIndex = bufferRef.current
+    clearThrottleTimer()
+
     const arrayLength = data.intermediate.length
 
 
-    console.log("buufer index:", bufferIndex, "length:", arrayLength)
-    const duplicated = data.intermediate.slice(bufferIndex, arrayLength)
+    console.log("buufer index:", bufferRef.current, "length:", arrayLength)
+    const duplicated = collectBufferedPoints(data)
     const bufferLength2send = duplicated.length
     console.log("sent length:", bufferLength2send)
 
@@ -195,7 +226,17 @@ const CanvasPage = () => {
     if (!ctx) return
     const pos = getMousePos(e)
 
-    ctx.moveTo(pos.x, pos.y)
+    const lastPoint = localStrokeRef.current.intermediate[localStrokeRef.current.intermediate.length - 1] ?? localStrokeRef.current.initial
+    if (lastPoint) {
+      ctx.beginPath()
+      ctx.strokeStyle = localColorRef.current
+      ctx.lineWidth = localWidthRef.current
+      ctx.lineCap = "round"
+      ctx.moveTo(lastPoint.x, lastPoint.y)
+      ctx.lineTo(pos.x, pos.y)
+      ctx.stroke()
+      ctx.closePath()
+    }
 
     localStrokeRef.current.final = { x: pos.x, y: pos.y }
     const selected = ctx.strokeStyle
@@ -204,10 +245,7 @@ const CanvasPage = () => {
     localStrokeRef.current.color = String(selected)
     ctx.closePath()
     const finishedStroke = { ...localStrokeRef.current }
-    setHistry((prev) => {
-      return [...prev, finishedStroke]
-    })
-    pointerIndexRef.current++
+    addStrokeToHistory(finishedStroke)
     // EmitStroker(currentStroke)
     const data = {
       final: localStrokeRef.current.final,
@@ -262,47 +300,61 @@ const CanvasPage = () => {
   }, [strokeSize])
 
 
-  const HandelUndo = () => {
-    let relativeIndex = pointerIndexRef.current
-    console.log("inital strokeIndex before undo:", relativeIndex)
-    console.log("Ready to Undo")
+  const drawStoredStroke = (ctx: CanvasRenderingContext2D, item: Stroke) => {
+    if (!item.initial || !item.final) {
+      return
+    }
+
+    ctx.beginPath()
+    ctx.lineCap = "round"
+    ctx.lineWidth = item.width ?? 5
+    ctx.strokeStyle = item.color ?? "black"
+    ctx.moveTo(item.initial.x, item.initial.y)
+
+    item.intermediate.forEach((position) => {
+      ctx.lineTo(position.x, position.y)
+    })
+
+    ctx.lineTo(item.final.x, item.final.y)
+    ctx.stroke()
+    ctx.closePath()
+  }
+
+  const redrawHistoryUntil = (targetIndex: number) => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext("2d")
     if (!ctx) return
-    console.log("whole histry:", Histry)
-    const strokeLengh = Histry.length
-    console.log("Histry length:", strokeLengh)
 
-    console.log("stroke index:", relativeIndex)
-    if (Number(relativeIndex) <= -1) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+    Histry.forEach((item, index) => {
+      if (index <= targetIndex) {
+        drawStoredStroke(ctx, item)
+      }
+    })
+
+    ctx.strokeStyle = localColorRef.current
+    ctx.lineWidth = localWidthRef.current
+    ctx.lineCap = "round"
+  }
+
+
+  const HandelUndo = () => {
+    const currentIndex = Math.min(pointerIndexRef.current, Histry.length - 1)
+    console.log("inital strokeIndex before undo:", currentIndex)
+    console.log("Ready to Undo")
+
+    if (currentIndex <= -1) {
       console.log("no index to undo")
+      pointerIndexRef.current = -1
       return
     }
-    relativeIndex = Number(relativeIndex) - 1
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-    // setstrokeIndex((prev) => Number(prev) - 1)
-    pointerIndexRef.current--
-    Histry.forEach((item, i) => {
-      if (i > Number(relativeIndex)) {
-        console.log("blocked due to storeindex")
-        return
-      }
-      const color = item.color
-      const width = item.width
-      ctx.beginPath()
-      ctx.lineWidth = Number(width)
-      ctx.strokeStyle = String(color)
-      ctx.moveTo(item.initial?.x, item.initial.y)
 
-      item.intermediate.forEach((position, j) => {
-        ctx.lineTo(position.x, position.y)
-      })
-      ctx.lineTo(item.final.x, item.final?.y)
-      ctx.stroke()
-      ctx.closePath()
-    })
-    console.log("final strokeIndex after undo:", relativeIndex)
+    const nextIndex = currentIndex - 1
+    pointerIndexRef.current = nextIndex
+    redrawHistoryUntil(nextIndex)
+    console.log("final strokeIndex after undo:", nextIndex)
   }
 
   const HandleClear = () => {
@@ -311,6 +363,8 @@ const CanvasPage = () => {
     const ctx = canvas.getContext("2d")
     if (!ctx) return
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setHistry([])
+    historyLengthRef.current = 0
     pointerIndexRef.current = -1
     activeIdref.current = null
   }
@@ -330,85 +384,32 @@ const CanvasPage = () => {
   const HandelRedo = () => {
     console.log("redoing stroke")
 
-    let relativeIndex = pointerIndexRef.current
-    console.log("inital strokeIndex before redo:", relativeIndex)
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-
-
-    ctx.clearRect(0, 0, canvas.height, canvas.width)
-    const absoluteL = Histry.length
-    if (absoluteL == 0) {
+    const currentIndex = Math.min(pointerIndexRef.current, Histry.length - 1)
+    console.log("inital strokeIndex before redo:", currentIndex)
+    if (currentIndex >= Histry.length - 1) {
       console.log("no histry to redo")
       return
     }
-    relativeIndex = Number(relativeIndex) + 1
-    pointerIndexRef.current++
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-    Histry.forEach((item, i) => {
-      if (i > Number(relativeIndex)) {
-        console.log("blocked due to storeindex")
-        return
-      }
-      const color = item.color
-      const width = item.width
-      ctx.beginPath()
-      ctx.lineWidth = Number(width)
-      ctx.strokeStyle = String(color)
-      ctx.moveTo(item.initial?.x, item.initial.y)
-
-      item.intermediate.forEach((position, j) => {
-        ctx.lineTo(position.x, position.y)
-        ctx.stroke()
-      })
-      ctx.lineTo(item.final.x, item.final?.y)
-      ctx.stroke()
-      ctx.closePath()
-    })
-    console.log("final strokeIndex after redo:", relativeIndex)
+    const nextIndex = currentIndex + 1
+    pointerIndexRef.current = nextIndex
+    redrawHistoryUntil(nextIndex)
+    console.log("final strokeIndex after redo:", nextIndex)
   }
 
-  // const EmitStroker = (data: any) => {
-  //   socket.emit("send-stroke", data)
-  //   console.log("stroke emmited to we")
-  // }
+  const getRemoteStreamId = (data: any) => {
+    return String(data.data.id ?? "remote")
+  }
 
-  // const DrawStroke = (data: any) => {
-  //   console.log("ready to draw stroke btw", data)
-  //   const canvas = canvasRef.current
-  //   if (!canvas) return
-  //   const ctx = canvas.getContext("2d")
-  //   if (!ctx) return
-  //   const orginalcolor = ctx.strokeStyle
-  //   const orginalwidth = ctx.lineWidth
-  //   ctx.beginPath()
-  //   ctx.lineWidth = Number(data.width)
-  //   ctx.strokeStyle = data.color
-  //   ctx.moveTo(data.initial?.x, data.initial.y)
-  //
-  //   data.intermediate.forEach((position: any, j: number) => {
-  //     ctx.lineTo(position.x, position.y)
-  //     ctx.stroke()
-  //   })
-  //   ctx.lineTo(data.final.x, data.final?.y)
-  //   ctx.stroke()
-  //   ctx.closePath()
-  //   ctx.strokeStyle = orginalcolor
-  //   ctx.lineWidth = orginalwidth
-  // }
-
+  const getLastStrokePoint = (stroke: Stroke) => {
+    const lastIntermediate = stroke.intermediate[stroke.intermediate.length - 1]
+    return lastIntermediate ?? stroke.initial
+  }
 
   useEffect(() => {
     if (!socket) {
       return
     }
-    // socket.on("recieve-stroke", (data: any) => {
-    //   console.log("some one drew", data)
-    //   DrawStroke(data.data)
-    // })
 
     socket.on("recieve-start-stream", (data: any) => {
       console.log("some one started drawing")
@@ -421,9 +422,17 @@ const CanvasPage = () => {
       if (!ctx) return
       ctx.beginPath()
       const postion = data.data.data.inital
+      const streamId = getRemoteStreamId(data)
       console.log("postion:", postion)
       ctx.moveTo(postion.x, postion.y)
-      remoteStrokeRef.current.initial = { x: postion.x, y: postion.y }
+      remoteStrokeMapRef.current[streamId] = {
+        initial: { x: postion.x, y: postion.y },
+        intermediate: [],
+        final: null,
+        color: data.data.data.color,
+        width: Number(data.data.data.width),
+        id: streamId,
+      }
       ctx.strokeStyle = data.data.data.color
       ctx.lineWidth = data.data.data.width
       console.log(data.data.data.color, data.data.data.width)
@@ -431,49 +440,57 @@ const CanvasPage = () => {
 
     socket.on("recieve-send-stream", (data: any) => {
       console.log("some one is drawing", data)
-      if (!isOpponentDrawing.current) {
-        return
-      }
       const canvas = canvasRef.current
       if (!canvas) return
       const ctx = canvas.getContext("2d")
       if (!ctx) return
-      data.data.data.forEach((res, index) => {
+      const streamId = getRemoteStreamId(data)
+      const currentStroke = remoteStrokeMapRef.current[streamId]
+      if (!currentStroke) return
+
+      ctx.strokeStyle = currentStroke.color ?? "black"
+      ctx.lineWidth = currentStroke.width ?? 5
+      ctx.lineCap = "round"
+      data.data.data.forEach((res: any) => {
+        const lastPoint = getLastStrokePoint(currentStroke)
+        if (!lastPoint) return
+        ctx.beginPath()
+        ctx.moveTo(lastPoint.x, lastPoint.y)
         ctx.lineTo(res.x, res.y)
         ctx.stroke()
-        remoteStrokeRef.current.intermediate.push(res)
+        ctx.closePath()
+        currentStroke.intermediate.push(res)
       })
     })
 
     socket.on("recieve-end-stream", (data: any) => {
       console.log("some one ended drawing", data)
-      isOpponentDrawing.current = false
       const pos = data.data.data
       const canvas = canvasRef.current
       if (!canvas) return
       const ctx = canvas.getContext("2d")
       if (!ctx) return
+      const streamId = getRemoteStreamId(data)
+      const currentStroke = remoteStrokeMapRef.current[streamId]
+      if (!currentStroke) return
 
-      ctx.moveTo(pos.x, pos.y)
-
-      remoteStrokeRef.current.final = { x: pos.x, y: pos.y }
-      const selected = ctx.strokeStyle
-      const width = ctx.lineWidth
-      remoteStrokeRef.current.width = width
-      remoteStrokeRef.current.color = String(selected)
-      ctx.closePath()
-      setHistry((prev) => {
-        return [...prev, { ...remoteStrokeRef.current }]
-      })
-      pointerIndexRef.current++
-      console.log("stroke index:", pointerIndexRef.current)
-      remoteStrokeRef.current = {
-        initial: null,
-        intermediate: [],
-        final: null,
-        color: null,
-        width: null
+      const lastPoint = getLastStrokePoint(currentStroke)
+      if (lastPoint) {
+        ctx.beginPath()
+        ctx.strokeStyle = currentStroke.color ?? "black"
+        ctx.lineWidth = currentStroke.width ?? 5
+        ctx.lineCap = "round"
+        ctx.moveTo(lastPoint.x, lastPoint.y)
+        ctx.lineTo(pos.x, pos.y)
+        ctx.stroke()
+        ctx.closePath()
       }
+
+      currentStroke.final = { x: pos.x, y: pos.y }
+      addStrokeToHistory(currentStroke)
+      console.log("stroke index:", pointerIndexRef.current)
+      delete remoteStrokeMapRef.current[streamId]
+      isOpponentDrawing.current = Object.keys(remoteStrokeMapRef.current).length > 0
     })
 
     return () => {
@@ -504,7 +521,7 @@ const CanvasPage = () => {
         <div className="grid grid-rows-2 grid-flow-col border-1 border-dark">
           {
             dummyColor.map((item, index) => {
-              return <div onClick={(e) => HandelColorSelect(item)} key={item + index} className="size-8 border-1" style={{ background: item }} >
+              return <div onClick={() => HandelColorSelect(item)} key={item + index} className="size-8 border-1" style={{ background: item }} >
               </div>
             })
           }
