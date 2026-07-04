@@ -1,14 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import {
-
-  Play,
-} from "lucide-react";
+import { Play, X } from "lucide-react";
 
 import { AvatarBadge } from "./GameAvatar";
 import type React from "react";
 import useSocketStore from "../SocketStore";
 import useUserStore from "../UserStore";
-import { socketBaseUrl } from "../Utils/socket";
 import {
   defaultGameSettings,
   type GameSettings,
@@ -16,8 +12,15 @@ import {
 } from "./GameTypes";
 import toast from "react-hot-toast";
 import useRoomStore from "@/Zustand/RoomStore";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { createSocket } from "../Utils/socket";
+import { GuestProfileSetup } from "./GuestProfileSetup";
+import type { GuestProfile } from "../Utils/guestProfile";
+
+type LobbyLocationState = {
+  openProfileSetup?: boolean;
+  returnTo?: string;
+};
 
 const LobbyPage = () => {
   const guestProfile = useUserStore((state) => state.guestProfile);
@@ -27,8 +30,11 @@ const LobbyPage = () => {
   const clearSocketInstance = useSocketStore((state) => state.clearSocketInstance);
   const clearGuestProfile = useUserStore((state) => state.clearGuestProfile);
   const clearCurrentUser = useUserStore((state) => state.clearCurrentUser);
-  const { setSettings, setRoomId, clearRoom, Settings, RoomId } = useRoomStore()
+  const setGuestProfile = useUserStore((state) => state.setGuestProfile);
+  const { setRoomId } = useRoomStore()
   const navigate = useNavigate()
+  const location = useLocation()
+  const profileSetupState = location.state as LobbyLocationState | null;
 
   // const [gorupId, setGroupId] = useState<string | null>(null);
   // const [members, setMember] = useState([])
@@ -47,28 +53,23 @@ const LobbyPage = () => {
   const [room, setRoom] = useState(null);
   const [joinCode, setJoinCode] = useState("");
   const [settingsDraft, setSettingsDraft] = useState<GameSettings>(defaultGameSettings);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(
+    () => !guestProfile || Boolean(profileSetupState?.openProfileSetup)
+  );
+  const [profileRedirect, setProfileRedirect] = useState<string | null>(
+    () => profileSetupState?.returnTo ?? null
+  );
 
 
   const CreateRoom = () => {
-    socketInstance?.emit("create-group", { settings: settingsDraft, currentUser: activeUser });
-  }
-
-  const joinRoom = () => {
-    const normalizedCode = joinCode.trim()
-    if (!normalizedCode) {
-      toast.error("Enter a room code.");
+    if (!activeUser) {
+      setProfileRedirect(null);
+      setIsProfileModalOpen(true);
       return;
     }
-    setJoinCode(normalizedCode);
-    socketInstance?.emit("join-group", {
-      id: normalizedCode,
-      roomId: normalizedCode,
-      currentUser: activeUser,
-    });
-    setRoomId(normalizedCode)
 
-    // setRoom({ code: normalizedCode, phase: "lobby", strokes: [], players: [], connectedPlayerCount: 0, totalTurnsBeforeVote: 0, submittedTurns: 0, eligibleVotes: 0 });
-  };
+    socketInstance?.emit("create-group", { settings: settingsDraft, currentUser: activeUser });
+  }
 
   const resetProfile = () => {
     if (room) {
@@ -79,7 +80,53 @@ const LobbyPage = () => {
     clearSocketInstance(socketInstance);
     clearGuestProfile();
     clearCurrentUser();
+    setProfileRedirect(null);
+    setIsProfileModalOpen(true);
   };
+
+  const closeProfileModal = () => {
+    setIsProfileModalOpen(false);
+    setProfileRedirect(null);
+
+    if (profileSetupState?.openProfileSetup) {
+      navigate("/lobby", { replace: true });
+    }
+  };
+
+  const saveProfile = (profile: GuestProfile) => {
+    setGuestProfile(profile);
+    clearCurrentUser();
+    setIsProfileModalOpen(false);
+
+    const redirect = profileRedirect;
+    setProfileRedirect(null);
+
+    if (redirect) {
+      navigate(redirect, { replace: true });
+      return;
+    }
+
+    if (profileSetupState?.openProfileSetup) {
+      navigate("/lobby", { replace: true });
+    }
+  };
+
+  const joinRoomFromLobby = () => {
+    const roomCode = joinCode.trim();
+    if (!roomCode) {
+      toast.error("Paste a room code.");
+      return;
+    }
+
+    if (!activeUser) {
+      setProfileRedirect(`/gameRoom/${roomCode}`);
+      setIsProfileModalOpen(true);
+      return;
+    }
+
+    navigate(`/gameRoom/${roomCode}`);
+  };
+
   const SettingsControls = ({
     settings,
     setSettings,
@@ -156,6 +203,19 @@ const LobbyPage = () => {
   );
 
   useEffect(() => {
+    if (!guestProfile) {
+      setIsProfileModalOpen(true);
+    }
+  }, [guestProfile]);
+
+  useEffect(() => {
+    if (!profileSetupState?.openProfileSetup) return;
+
+    setIsProfileModalOpen(true);
+    setProfileRedirect(profileSetupState.returnTo ?? null);
+  }, [profileSetupState?.openProfileSetup, profileSetupState?.returnTo]);
+
+  useEffect(() => {
     if (!socketInstance) {
       const io = createSocket()
       setSocketInstance(io)
@@ -167,27 +227,13 @@ const LobbyPage = () => {
       setRoom(data.trimmed)
       console.log("current user:", currentUser)
       toast.success("Room created successfully!");
-      navigate(`/room/${data.trimmed}`);
+      navigate(`/gameRoom/${data.trimmed}`);
     })
 
-    socketInstance.on("group-joined", (data) => {
-      console.log("data from joining:", data)
-      console.log(currentUser?.username || currentUser?.id)
-      const filteredMembers = data.members.filter(member => {
-        const isCurrentUsername = currentUser?.username && member.username === currentUser.username;
-        const isCurrentId = currentUser?.id && member.id === currentUser.id;
-
-        return !(isCurrentUsername || isCurrentId);
-      });
-      setSettings(data.settings)
-      console.log("settings i got :", data.settings)
-      console.log("owner:", data.settings.owner)
-    })
     return () => {
       socketInstance.off("group-created")
-      socketInstance.off("group-joined")
     }
-  }, [socketInstance])
+  }, [currentUser, navigate, setRoomId, setSocketInstance, socketInstance])
 
   const InfoTile = ({ label, value }: { label: string; value: string }) => (
     <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
@@ -229,7 +275,7 @@ const LobbyPage = () => {
                       Playing as
                     </p>
                     <p className="truncate font-semibold text-zinc-100">
-                      {guestProfile?.username}
+                      {guestProfile?.username || "Set up player"}
                     </p>
                   </div>
                 </div>
@@ -238,10 +284,9 @@ const LobbyPage = () => {
                   onClick={resetProfile}
                   className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-zinc-200 transition hover:bg-white/10"
                 >
-                  Change player
+                  {guestProfile ? "Change player" : "Set up player"}
                 </button>
               </div>
-              <p className="mt-5 text-xs text-zinc-500">Socket URL: {socketBaseUrl}</p>
             </div>
 
             <div className="space-y-5">
@@ -279,14 +324,42 @@ const LobbyPage = () => {
               <button
                 type="submit"
                 className="mt-4 w-full rounded-xl border border-white/10 bg-white px-4 py-3 text-sm font-semibold text-zinc-950 transition hover:bg-zinc-200"
-                onClick={joinRoom}
+                onClick={joinRoomFromLobby}
               >
                 Join room
               </button>
             </div>
           </section>
         </div>
-      </main>    </>
+      </main>
+
+      {isProfileModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80 px-3 py-4 backdrop-blur-sm sm:px-6"
+          onClick={closeProfileModal}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Player setup"
+            className="relative w-full max-w-4xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={closeProfileModal}
+              className="absolute -right-2 -top-2 z-10 flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-zinc-950/95 text-zinc-200 shadow-lg shadow-black/30 transition hover:bg-white/10 sm:-right-3 sm:-top-3"
+              aria-label="Close player setup"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <div className="max-h-[calc(100vh-2rem)] overflow-y-auto rounded-3xl">
+              <GuestProfileSetup onSave={saveProfile} variant="modal" />
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 

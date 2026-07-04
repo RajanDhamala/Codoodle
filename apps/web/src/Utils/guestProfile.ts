@@ -13,7 +13,7 @@ type AvatarConfig = {
 };
 
 type GuestProfile = {
-  schemaVersion: 2;
+  schemaVersion: typeof GUEST_PROFILE_SCHEMA_VERSION;
   id: string;
   username: string;
   avatar: AvatarConfig;
@@ -22,7 +22,7 @@ type GuestProfile = {
 };
 
 type StoredGuestProfile = Omit<GuestProfile, "avatar"> & {
-  avatar: string;
+  avatar: string | AvatarConfig;
 };
 
 type AvatarChoice<T extends string = string> = {
@@ -30,7 +30,7 @@ type AvatarChoice<T extends string = string> = {
   label: string;
 };
 
-const avatarBackgroundOptions = [
+const avatarBackgroundOptions: AvatarChoice[] = [
   { id: "#312e81", label: "Night" },
   { id: "#0f766e", label: "Mint" },
   { id: "#1d4ed8", label: "Blue" },
@@ -39,7 +39,7 @@ const avatarBackgroundOptions = [
   { id: "#365314", label: "Lime" },
 ];
 
-const avatarBodyColorOptions = [
+const avatarBodyColorOptions: AvatarChoice[] = [
   { id: "#38bdf8", label: "Sky" },
   { id: "#5eead4", label: "Mint" },
   { id: "#bef264", label: "Lime" },
@@ -49,7 +49,7 @@ const avatarBodyColorOptions = [
   { id: "#f8fafc", label: "Paper" },
 ];
 
-const avatarHairColorOptions = [
+const avatarHairColorOptions: AvatarChoice[] = [
   { id: "#111827", label: "Ink" },
   { id: "#7c2d12", label: "Brown" },
   { id: "#f59e0b", label: "Gold" },
@@ -93,7 +93,6 @@ const avatarPatternOptions: AvatarChoice<AvatarConfig["pattern"]>[] = [
 ];
 
 const AVATAR_CODE_LENGTH = 8;
-const AVATAR_CODE_ALPHABET = "0123456789";
 
 const defaultAvatarConfig: AvatarConfig = {
   background: avatarBackgroundOptions[0].id,
@@ -106,92 +105,33 @@ const defaultAvatarConfig: AvatarConfig = {
   accessory: "none",
 };
 
-const usernameSuggestions = [
-  "Blue Marker",
-  "Quick Sketch",
-  "Hidden Artist",
-  "Canvas Champ",
-  "Fast Doodle",
-  "Secret Line",
-];
-
 const hasLocalStorage = () => typeof window !== "undefined" && Boolean(window.localStorage);
 
-const getRandomId = () => {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-
-  return `guest-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+const getDigitForOption = (options: readonly AvatarChoice[], value: string) => {
+  const index = options.findIndex((option) => option.id === value);
+  return index >= 0 && index <= 9 ? String(index) : "0";
 };
 
-const pickRandom = <T,>(items: readonly T[]) => {
-  const index = Math.floor(Math.random() * items.length);
-  return items[index] || items[0];
-};
-
-const normalizeUsername = (username: string) => username.trim().replace(/\s+/g, " ");
-
-const isValidUsername = (username: string) => {
-  const normalized = normalizeUsername(username);
-  return normalized.length >= 2 && normalized.length <= 20;
-};
-
-const includesId = <T extends string>(items: readonly AvatarChoice<T>[], value: unknown): value is T =>
-  typeof value === "string" && items.some((item) => item.id === value);
-
-const includesColor = (items: readonly AvatarChoice[], value: unknown) =>
-  typeof value === "string" && items.some((item) => item.id === value);
-
-const getAvatarOptionDigit = <T extends string>(
-  options: readonly AvatarChoice<T>[],
-  value: T
-) => {
-  const optionIndex = options.findIndex((option) => option.id === value);
-  if (optionIndex < 0 || optionIndex >= AVATAR_CODE_ALPHABET.length) return "0";
-  return AVATAR_CODE_ALPHABET[optionIndex];
-};
-
-const getAvatarOptionFromDigit = <T extends string>(
+const getOptionFromDigit = <T extends string>(
   options: readonly AvatarChoice<T>[],
   digit: string
 ) => {
-  const optionIndex = AVATAR_CODE_ALPHABET.indexOf(digit);
-  if (optionIndex < 0 || optionIndex >= options.length) return null;
-  return options[optionIndex]?.id ?? null;
+  if (!/^\d$/.test(digit)) return null;
+
+  return options[Number(digit)]?.id ?? null;
 };
 
-const isValidAvatarConfig = (avatar: unknown): avatar is AvatarConfig => {
-  if (!avatar || typeof avatar !== "object") return false;
-
-  const config = avatar as Partial<AvatarConfig>;
-
-  return (
-    includesColor(avatarBackgroundOptions, config.background) &&
-    includesId(avatarPatternOptions, config.pattern) &&
-    includesColor(avatarBodyColorOptions, config.bodyColor) &&
-    includesId(avatarHairStyleOptions, config.hairStyle) &&
-    includesColor(avatarHairColorOptions, config.hairColor) &&
-    includesId(avatarEyeOptions, config.eyeStyle) &&
-    includesId(avatarMouthOptions, config.mouthStyle) &&
-    includesId(avatarAccessoryOptions, config.accessory)
-  );
-};
-
-const encodeAvatarConfig = (avatar: AvatarConfig) => {
-  const safeAvatar = isValidAvatarConfig(avatar) ? avatar : defaultAvatarConfig;
-
-  return [
-    getAvatarOptionDigit(avatarBackgroundOptions, safeAvatar.background),
-    getAvatarOptionDigit(avatarEyeOptions, safeAvatar.eyeStyle),
-    getAvatarOptionDigit(avatarMouthOptions, safeAvatar.mouthStyle),
-    getAvatarOptionDigit(avatarHairStyleOptions, safeAvatar.hairStyle),
-    getAvatarOptionDigit(avatarHairColorOptions, safeAvatar.hairColor),
-    getAvatarOptionDigit(avatarBodyColorOptions, safeAvatar.bodyColor),
-    getAvatarOptionDigit(avatarAccessoryOptions, safeAvatar.accessory),
-    getAvatarOptionDigit(avatarPatternOptions, safeAvatar.pattern),
+const encodeAvatarConfig = (avatar: AvatarConfig) =>
+  [
+    getDigitForOption(avatarBackgroundOptions, avatar.background),
+    getDigitForOption(avatarEyeOptions, avatar.eyeStyle),
+    getDigitForOption(avatarMouthOptions, avatar.mouthStyle),
+    getDigitForOption(avatarHairStyleOptions, avatar.hairStyle),
+    getDigitForOption(avatarHairColorOptions, avatar.hairColor),
+    getDigitForOption(avatarBodyColorOptions, avatar.bodyColor),
+    getDigitForOption(avatarAccessoryOptions, avatar.accessory),
+    getDigitForOption(avatarPatternOptions, avatar.pattern),
   ].join("");
-};
 
 const decodeAvatarCode = (avatarCode: unknown): AvatarConfig | null => {
   if (typeof avatarCode !== "string") return null;
@@ -210,14 +150,14 @@ const decodeAvatarCode = (avatarCode: unknown): AvatarConfig | null => {
     patternDigit,
   ] = code;
 
-  const background = getAvatarOptionFromDigit(avatarBackgroundOptions, backgroundDigit);
-  const eyeStyle = getAvatarOptionFromDigit(avatarEyeOptions, eyeStyleDigit);
-  const mouthStyle = getAvatarOptionFromDigit(avatarMouthOptions, mouthStyleDigit);
-  const hairStyle = getAvatarOptionFromDigit(avatarHairStyleOptions, hairStyleDigit);
-  const hairColor = getAvatarOptionFromDigit(avatarHairColorOptions, hairColorDigit);
-  const bodyColor = getAvatarOptionFromDigit(avatarBodyColorOptions, bodyColorDigit);
-  const accessory = getAvatarOptionFromDigit(avatarAccessoryOptions, accessoryDigit);
-  const pattern = getAvatarOptionFromDigit(avatarPatternOptions, patternDigit);
+  const background = getOptionFromDigit(avatarBackgroundOptions, backgroundDigit);
+  const eyeStyle = getOptionFromDigit(avatarEyeOptions, eyeStyleDigit);
+  const mouthStyle = getOptionFromDigit(avatarMouthOptions, mouthStyleDigit);
+  const hairStyle = getOptionFromDigit(avatarHairStyleOptions, hairStyleDigit);
+  const hairColor = getOptionFromDigit(avatarHairColorOptions, hairColorDigit);
+  const bodyColor = getOptionFromDigit(avatarBodyColorOptions, bodyColorDigit);
+  const accessory = getOptionFromDigit(avatarAccessoryOptions, accessoryDigit);
+  const pattern = getOptionFromDigit(avatarPatternOptions, patternDigit);
 
   if (
     !background ||
@@ -244,88 +184,58 @@ const decodeAvatarCode = (avatarCode: unknown): AvatarConfig | null => {
   };
 };
 
-const getAvatarConfigFromUnknown = (avatar: unknown) => {
-  if (isValidAvatarConfig(avatar)) return avatar;
-  return decodeAvatarCode(avatar);
-};
-
 const sanitizeAvatarConfig = (avatar: unknown): AvatarConfig => {
-  return getAvatarConfigFromUnknown(avatar) ?? defaultAvatarConfig;
-};
+  const decodedAvatar = decodeAvatarCode(avatar);
+  if (decodedAvatar) return decodedAvatar;
 
-const normalizeGuestProfile = (value: unknown): GuestProfile | null => {
-  if (!value || typeof value !== "object") return null;
+  if (!avatar || typeof avatar !== "object") return defaultAvatarConfig;
 
-  const profile = value as Partial<GuestProfile> & { avatar?: unknown };
-  const avatar = getAvatarConfigFromUnknown(profile.avatar);
-
-  if (
-    profile.schemaVersion === GUEST_PROFILE_SCHEMA_VERSION &&
-    typeof profile.id === "string" &&
-    profile.id.length > 0 &&
-    typeof profile.username === "string" &&
-    isValidUsername(profile.username) &&
-    avatar &&
-    typeof profile.createdAt === "string" &&
-    typeof profile.updatedAt === "string"
-  ) {
-    return {
-      schemaVersion: GUEST_PROFILE_SCHEMA_VERSION,
-      id: profile.id,
-      username: normalizeUsername(profile.username),
-      avatar,
-      createdAt: profile.createdAt,
-      updatedAt: profile.updatedAt,
-    };
-  }
-
-  return null;
-};
-
-const createRandomAvatar = (): AvatarConfig => ({
-  background: pickRandom(avatarBackgroundOptions).id,
-  pattern: pickRandom(avatarPatternOptions).id,
-  bodyColor: pickRandom(avatarBodyColorOptions).id,
-  hairStyle: pickRandom(avatarHairStyleOptions).id,
-  hairColor: pickRandom(avatarHairColorOptions).id,
-  eyeStyle: pickRandom(avatarEyeOptions).id,
-  mouthStyle: pickRandom(avatarMouthOptions).id,
-  accessory: pickRandom(avatarAccessoryOptions).id,
-});
-
-const getRandomUsername = () => pickRandom(usernameSuggestions);
-
-const createGuestProfile = (username: string, avatar: AvatarConfig): GuestProfile | null => {
-  const normalizedUsername = normalizeUsername(username);
-
-  if (!isValidUsername(normalizedUsername) || !isValidAvatarConfig(avatar)) {
-    return null;
-  }
-
-  const now = new Date().toISOString();
+  const value = avatar as Partial<AvatarConfig>;
 
   return {
-    schemaVersion: GUEST_PROFILE_SCHEMA_VERSION,
-    id: getRandomId(),
-    username: normalizedUsername,
-    avatar,
-    createdAt: now,
-    updatedAt: now,
+    background:
+      typeof value.background === "string" ? value.background : defaultAvatarConfig.background,
+    pattern: value.pattern || defaultAvatarConfig.pattern,
+    bodyColor:
+      typeof value.bodyColor === "string" ? value.bodyColor : defaultAvatarConfig.bodyColor,
+    hairStyle: value.hairStyle || defaultAvatarConfig.hairStyle,
+    hairColor:
+      typeof value.hairColor === "string" ? value.hairColor : defaultAvatarConfig.hairColor,
+    eyeStyle: value.eyeStyle || defaultAvatarConfig.eyeStyle,
+    mouthStyle: value.mouthStyle || defaultAvatarConfig.mouthStyle,
+    accessory: value.accessory || defaultAvatarConfig.accessory,
   };
 };
 
-const loadGuestProfile = () => {
+const loadGuestProfile = (): GuestProfile | null => {
   if (!hasLocalStorage()) return null;
 
   const rawProfile = window.localStorage.getItem(GUEST_PROFILE_STORAGE_KEY);
   if (!rawProfile) return null;
 
   try {
-    const parsedProfile = JSON.parse(rawProfile) as unknown;
-    const profile = normalizeGuestProfile(parsedProfile);
-    if (profile) return profile;
+    const profile = JSON.parse(rawProfile) as Partial<StoredGuestProfile>;
+    const username = typeof profile.username === "string" ? profile.username.trim() : "";
+
+    if (
+      profile.schemaVersion === GUEST_PROFILE_SCHEMA_VERSION &&
+      typeof profile.id === "string" &&
+      profile.id.length > 0 &&
+      username.length > 0 &&
+      typeof profile.createdAt === "string" &&
+      typeof profile.updatedAt === "string"
+    ) {
+      return {
+        schemaVersion: GUEST_PROFILE_SCHEMA_VERSION,
+        id: profile.id,
+        username,
+        avatar: sanitizeAvatarConfig(profile.avatar),
+        createdAt: profile.createdAt,
+        updatedAt: profile.updatedAt,
+      };
+    }
   } catch {
-    // Malformed localStorage should behave the same as a missing profile.
+    // Bad localStorage data should behave like a missing profile.
   }
 
   window.localStorage.removeItem(GUEST_PROFILE_STORAGE_KEY);
@@ -360,14 +270,9 @@ export {
   avatarMouthOptions,
   avatarPatternOptions,
   clearGuestProfile,
-  createGuestProfile,
-  createRandomAvatar,
   decodeAvatarCode,
   defaultAvatarConfig,
   encodeAvatarConfig,
-  getRandomUsername,
-  isValidAvatarConfig,
-  isValidUsername,
   loadGuestProfile,
   sanitizeAvatarConfig,
   saveGuestProfile,

@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, Shuffle, UserRound } from "lucide-react";
-import { useState } from "react";
+import { type FormEvent, useState } from "react";
 import {
   avatarAccessoryOptions,
   avatarBackgroundOptions,
@@ -9,11 +9,7 @@ import {
   avatarHairStyleOptions,
   avatarMouthOptions,
   avatarPatternOptions,
-  createGuestProfile,
-  createRandomAvatar,
   encodeAvatarConfig,
-  getRandomUsername,
-  isValidUsername,
   type AvatarConfig,
   type GuestProfile,
 } from "../Utils/guestProfile";
@@ -27,7 +23,54 @@ type InitUserResponse = {
   id?: string | number;
 };
 
-export const GuestProfileSetup = ({ onSave }: { onSave: (profile: GuestProfile) => void }) => {
+type GuestProfileSetupProps = {
+  onSave: (profile: GuestProfile) => void;
+  variant?: "page" | "modal";
+};
+
+const usernameSuggestions = [
+  "Blue Marker",
+  "Quick Sketch",
+  "Hidden Artist",
+  "Canvas Champ",
+  "Fast Doodle",
+  "Secret Line",
+];
+
+const pickRandom = <T,>(items: readonly T[]) => {
+  const index = Math.floor(Math.random() * items.length);
+  return items[index] || items[0];
+};
+
+const normalizeUsername = (value: string) => value.trim().replace(/\s+/g, " ");
+
+const isValidUsername = (value: string) => {
+  const username = normalizeUsername(value);
+  return username.length >= 2 && username.length <= 20;
+};
+
+const getRandomUsername = () => pickRandom(usernameSuggestions);
+
+const getGuestId = () => {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+
+  return `guest-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
+
+const createRandomAvatar = (): AvatarConfig => ({
+  background: pickRandom(avatarBackgroundOptions).id,
+  pattern: pickRandom(avatarPatternOptions).id,
+  bodyColor: pickRandom(avatarBodyColorOptions).id,
+  hairStyle: pickRandom(avatarHairStyleOptions).id,
+  hairColor: pickRandom(avatarHairColorOptions).id,
+  eyeStyle: pickRandom(avatarEyeOptions).id,
+  mouthStyle: pickRandom(avatarMouthOptions).id,
+  accessory: pickRandom(avatarAccessoryOptions).id,
+});
+
+export const GuestProfileSetup = ({ onSave, variant = "page" }: GuestProfileSetupProps) => {
   const [username, setUsername] = useState(() => getRandomUsername());
   const [avatar, setAvatar] = useState<AvatarConfig>(() => createRandomAvatar());
   const [error, setError] = useState("");
@@ -45,14 +88,24 @@ export const GuestProfileSetup = ({ onSave }: { onSave: (profile: GuestProfile) 
     setError("");
   };
 
-  const submitProfile = async (event: React.FormEvent<HTMLFormElement>) => {
+  const submitProfile = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    const profile = createGuestProfile(username, avatar);
-    if (!profile) {
-      setError("Use a name between 2 and 20 characters and finish your avatar.");
+    const normalizedUsername = normalizeUsername(username);
+    if (!isValidUsername(normalizedUsername)) {
+      setError("Use a name between 2 and 20 characters.");
       return;
     }
+
+    const now = new Date().toISOString();
+    const profile: GuestProfile = {
+      schemaVersion: 2,
+      id: getGuestId(),
+      username: normalizedUsername,
+      avatar,
+      createdAt: now,
+      updatedAt: now,
+    };
 
     try {
       const payload = (await api.post("/user/init", {
@@ -60,12 +113,12 @@ export const GuestProfileSetup = ({ onSave }: { onSave: (profile: GuestProfile) 
         avatar: encodeAvatarConfig(profile.avatar),
       })) as unknown as InitUserResponse;
       const serverId = payload.data?.id ?? payload.id;
-      const now = new Date().toISOString();
+      const updatedAt = new Date().toISOString();
 
       onSave({
         ...profile,
         id: serverId ? String(serverId) : profile.id,
-        updatedAt: now,
+        updatedAt,
       });
     } catch {
       setError("Could not save your profile. Try again.");
@@ -80,71 +133,71 @@ export const GuestProfileSetup = ({ onSave }: { onSave: (profile: GuestProfile) 
     showSwatch: boolean;
     onChange: (value: string) => void;
   }> = [
-      {
-        key: "hairStyle",
-        label: "Hair style",
-        value: avatar.hairStyle,
-        options: avatarHairStyleOptions,
-        showSwatch: false,
-        onChange: (value) => updateAvatar({ hairStyle: value as AvatarConfig["hairStyle"] }),
-      },
-      {
-        key: "hairColor",
-        label: "Hair color",
-        value: avatar.hairColor,
-        options: avatarHairColorOptions,
-        showSwatch: true,
-        onChange: (value) => updateAvatar({ hairColor: value as AvatarConfig["hairColor"] }),
-      },
-      {
-        key: "eyes",
-        label: "Eyes",
-        value: avatar.eyeStyle,
-        options: avatarEyeOptions,
-        showSwatch: false,
-        onChange: (value) => updateAvatar({ eyeStyle: value as AvatarConfig["eyeStyle"] }),
-      },
-      {
-        key: "accessory",
-        label: "Accessory",
-        value: avatar.accessory,
-        options: avatarAccessoryOptions,
-        showSwatch: false,
-        onChange: (value) => updateAvatar({ accessory: value as AvatarConfig["accessory"] }),
-      },
-      {
-        key: "bodyColor",
-        label: "Body color",
-        value: avatar.bodyColor,
-        options: avatarBodyColorOptions,
-        showSwatch: true,
-        onChange: (value) => updateAvatar({ bodyColor: value as AvatarConfig["bodyColor"] }),
-      },
-      {
-        key: "background",
-        label: "Background",
-        value: avatar.background,
-        options: avatarBackgroundOptions,
-        showSwatch: true,
-        onChange: (value) => updateAvatar({ background: value as AvatarConfig["background"] }),
-      },
-      {
-        key: "mouth",
-        label: "Mouth",
-        value: avatar.mouthStyle,
-        options: avatarMouthOptions,
-        showSwatch: false,
-        onChange: (value) => updateAvatar({ mouthStyle: value as AvatarConfig["mouthStyle"] }),
-      },
-      {
-        key: "pattern",
-        label: "Pattern",
-        value: avatar.pattern,
-        options: avatarPatternOptions,
-        showSwatch: false,
-        onChange: (value) => updateAvatar({ pattern: value as AvatarConfig["pattern"] }),
-      },
-    ];
+    {
+      key: "hairStyle",
+      label: "Hair style",
+      value: avatar.hairStyle,
+      options: avatarHairStyleOptions,
+      showSwatch: false,
+      onChange: (value) => updateAvatar({ hairStyle: value as AvatarConfig["hairStyle"] }),
+    },
+    {
+      key: "hairColor",
+      label: "Hair color",
+      value: avatar.hairColor,
+      options: avatarHairColorOptions,
+      showSwatch: true,
+      onChange: (value) => updateAvatar({ hairColor: value as AvatarConfig["hairColor"] }),
+    },
+    {
+      key: "eyes",
+      label: "Eyes",
+      value: avatar.eyeStyle,
+      options: avatarEyeOptions,
+      showSwatch: false,
+      onChange: (value) => updateAvatar({ eyeStyle: value as AvatarConfig["eyeStyle"] }),
+    },
+    {
+      key: "accessory",
+      label: "Accessory",
+      value: avatar.accessory,
+      options: avatarAccessoryOptions,
+      showSwatch: false,
+      onChange: (value) => updateAvatar({ accessory: value as AvatarConfig["accessory"] }),
+    },
+    {
+      key: "bodyColor",
+      label: "Body color",
+      value: avatar.bodyColor,
+      options: avatarBodyColorOptions,
+      showSwatch: true,
+      onChange: (value) => updateAvatar({ bodyColor: value as AvatarConfig["bodyColor"] }),
+    },
+    {
+      key: "background",
+      label: "Background",
+      value: avatar.background,
+      options: avatarBackgroundOptions,
+      showSwatch: true,
+      onChange: (value) => updateAvatar({ background: value as AvatarConfig["background"] }),
+    },
+    {
+      key: "mouth",
+      label: "Mouth",
+      value: avatar.mouthStyle,
+      options: avatarMouthOptions,
+      showSwatch: false,
+      onChange: (value) => updateAvatar({ mouthStyle: value as AvatarConfig["mouthStyle"] }),
+    },
+    {
+      key: "pattern",
+      label: "Pattern",
+      value: avatar.pattern,
+      options: avatarPatternOptions,
+      showSwatch: false,
+      onChange: (value) => updateAvatar({ pattern: value as AvatarConfig["pattern"] }),
+    },
+  ];
 
   const activeMobileStep = avatarSteps[mobileAvatarStep] ?? avatarSteps[0];
   const activeMobileOptionIndex = activeMobileStep.options.findIndex(
@@ -167,15 +220,16 @@ export const GuestProfileSetup = ({ onSave }: { onSave: (profile: GuestProfile) 
     }
   };
 
-  return (
-    <main className="relative min-h-screen overflow-hidden bg-[#25116d] px-4 py-8 text-zinc-50">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(129,140,248,0.28),transparent_45%),linear-gradient(180deg,rgba(255,255,255,0.04),rgba(0,0,0,0.16))]" />
-      <div className="relative mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-5xl items-center justify-center">
-        <form
-          onSubmit={submitProfile}
-          className="w-full max-w-3xl rounded-[28px] border border-white/15 bg-[#34108f]/90 p-4 shadow-[0_24px_80px_rgba(6,2,35,0.55)] backdrop-blur sm:p-6"
-        >
-          <div className="rounded-[24px] border border-white/10 bg-black/10 p-4 sm:p-5">
+  const formClassName = [
+    "w-full rounded-3xl border border-white/10 bg-white/[0.04] p-4 shadow-2xl shadow-black/30 sm:p-6",
+    variant === "page" ? "max-w-3xl" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const form = (
+    <form onSubmit={submitProfile} className={formClassName}>
+          <div className="rounded-2xl border border-white/10 bg-zinc-950/70 p-4 sm:p-5">
             <div className="flex flex-col gap-3 sm:flex-row">
               <input
                 value={username}
@@ -185,13 +239,13 @@ export const GuestProfileSetup = ({ onSave }: { onSave: (profile: GuestProfile) 
                 }}
                 placeholder="Enter your name"
                 maxLength={20}
-                className="h-12 min-w-0 flex-1 rounded-xl border border-black/10 bg-white px-4 text-base font-medium text-zinc-900 outline-none ring-lime-300/40 transition placeholder:text-zinc-400 focus:ring-4"
+                className="h-12 min-w-0 flex-1 rounded-xl border border-white/10 bg-zinc-950 px-4 text-base font-medium text-zinc-50 outline-none ring-sky-400/40 transition placeholder:text-zinc-500 focus:ring-4"
               />
 
               <button
                 type="button"
                 onClick={randomizeProfile}
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/10 px-4 text-sm font-semibold text-white transition hover:bg-white/15"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-semibold text-zinc-100 transition hover:bg-white/10"
               >
                 <Shuffle className="h-4 w-4" />
                 Random
@@ -199,8 +253,8 @@ export const GuestProfileSetup = ({ onSave }: { onSave: (profile: GuestProfile) 
             </div>
 
             <div className="mt-5 lg:hidden">
-              <div className="rounded-[24px] border border-white/10 bg-[#2b0b7c]/80 px-4 py-5 text-center">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/55">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-5 text-center">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-sky-300">
                   {mobileAvatarStep + 1}/{avatarSteps.length} · {activeMobileStep.label}
                 </p>
 
@@ -223,7 +277,7 @@ export const GuestProfileSetup = ({ onSave }: { onSave: (profile: GuestProfile) 
                     <p className="mt-3 text-xl font-semibold text-white">
                       {username.trim() || "Player"}
                     </p>
-                    <p className="mt-1 text-xs uppercase tracking-[0.22em] text-white/55">
+                    <p className="mt-1 text-xs uppercase tracking-[0.22em] text-zinc-500">
                       Guest profile
                     </p>
                   </div>
@@ -238,7 +292,7 @@ export const GuestProfileSetup = ({ onSave }: { onSave: (profile: GuestProfile) 
                   </button>
                 </div>
 
-                <div className="mt-4 rounded-2xl border border-white/10 bg-black/15 px-3 py-3">
+                <div className="mt-4 rounded-2xl border border-white/10 bg-zinc-950/70 px-3 py-3">
                   <div className="flex items-center justify-center gap-2">
                     {activeMobileStep.showSwatch && activeMobileOption ? (
                       <span
@@ -259,8 +313,8 @@ export const GuestProfileSetup = ({ onSave }: { onSave: (profile: GuestProfile) 
                       type="button"
                       onClick={() => setMobileAvatarStep(index)}
                       className={`rounded-xl border px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] transition ${index === mobileAvatarStep
-                        ? "border-lime-300/60 bg-lime-300/15 text-lime-100"
-                        : "border-white/10 bg-white/5 text-white/70 hover:bg-white/10"
+                        ? "border-sky-300/60 bg-sky-400/10 text-sky-100"
+                        : "border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10"
                         }`}
                     >
                       {step.label}
@@ -299,7 +353,7 @@ export const GuestProfileSetup = ({ onSave }: { onSave: (profile: GuestProfile) 
                 />
               </div>
 
-              <div className="rounded-[24px] border border-white/10 bg-[#2b0b7c]/80 px-4 py-5 text-center">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-5 text-center">
                 <AvatarBadge
                   avatar={avatar}
                   name={username}
@@ -308,7 +362,7 @@ export const GuestProfileSetup = ({ onSave }: { onSave: (profile: GuestProfile) 
                 <p className="mt-3 text-xl font-semibold text-white">
                   {username.trim() || "Player"}
                 </p>
-                <p className="mt-1 text-xs uppercase tracking-[0.22em] text-white/55">
+                <p className="mt-1 text-xs uppercase tracking-[0.22em] text-zinc-500">
                   Guest profile
                 </p>
               </div>
@@ -348,13 +402,24 @@ export const GuestProfileSetup = ({ onSave }: { onSave: (profile: GuestProfile) 
             <button
               type="submit"
               disabled={!canSave}
-              className="mt-5 flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-[#18ff13] px-4 text-xl font-bold text-white shadow-[inset_0_-2px_0_rgba(0,0,0,0.18)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-40"
+              className="mt-5 flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-sky-400 px-4 text-xl font-bold text-zinc-950 transition hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <UserRound className="h-5 w-5" />
               Continue as guest
             </button>
           </div>
-        </form>
+    </form>
+  );
+
+  if (variant === "modal") {
+    return form;
+  }
+
+  return (
+    <main className="relative min-h-screen overflow-hidden bg-zinc-950 px-4 py-8 text-zinc-50">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.12),transparent_44%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(0,0,0,0.2))]" />
+      <div className="relative mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-5xl items-center justify-center">
+        {form}
       </div>
     </main>
   );
@@ -391,10 +456,10 @@ const AvatarCycleControl = <T extends string>({
   if (!selectedOption) return null;
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/15 px-3 py-2">
+    <div className="rounded-2xl border border-white/10 bg-zinc-950/70 px-3 py-2">
       <div className="mb-2 flex items-center justify-between gap-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/70">{label}</p>
-        <p className="text-[11px] text-white/45">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-300">{label}</p>
+        <p className="text-[11px] text-zinc-500">
           {selectedIndex + 1 || 1}/{options.length}
         </p>
       </div>

@@ -5,6 +5,8 @@ let socketInstance;
 
 const ActiveUser = new Map();
 const Rooms = new Map();
+const GameState = new Map()
+const ActiveStrokes = new Map();
 
 const InitWs = async (io) => {
   io.use((socket, next) => {
@@ -16,7 +18,9 @@ const InitWs = async (io) => {
       ActiveUser.set(socket.id, {
         id: decoded.id,
         username: decoded.username,
+        avatar: decoded.avatar
       });
+      console.log("avtar code:", decoded.avatar)
     } catch (err) {
       console.error("Socket handshake error:", err);
       return next(new Error("Unauthorized"));
@@ -48,14 +52,9 @@ const InitWs = async (io) => {
       socket.broadcast.emit("recieve-stroke", obj);
     });
 
-    socket.on("send-stream", (data) => {
-      console.log("stream event recived on 50ms interval", data)
-      socket.broadcast.emit("recieve-stream", { data, id: userdata.id, username: userdata.username })
-    })
-
     socket.on("create-group", (data) => {
       const roomId = uuidv4();
-      const trimmed = roomId.slice(0, 6);
+      const trimmed = roomId
       socket.join(trimmed);
       const settings = data.settings;
       console.log("setings:", settings);
@@ -65,21 +64,42 @@ const InitWs = async (io) => {
         owner: data.currentUser,
       });
       socket.emit("group-created", { trimmed });
+      GameState.set(trimmed, []);
+      const stroke = {
+        kind: null,
+        initial: {},
+        intermediate: [],
+        final: {},
+        color: "black",
+        width: 5,
+        id: null,
+      };
+      GameState.get(trimmed).push(stroke);
     });
 
     socket.on("join-group", (data) => {
       console.log("Data:", data);
       const roomId = data.id;
-      console.log("room id:", data.id);
+      const isRoom = Rooms.get(data.id)
+      // if (!isRoom) {
+      //   console.log("room not found")
+      //   return
+      // }
       socket.join(roomId);
-      socket.emit("group-joined", {
-        roomId,
-        members: getGroupMembers(roomId),
-        settings: Rooms.get(data.id),
-      });
-      socket.to(roomId).emit("new-user-joined", {
-        user: ActiveUser.get(socket.id),
-      });
+      const gameData = GameState.get(roomId)
+      if (gameData) {
+        console.log("game data:", gameData)
+        socket.emit("group-joined", {
+          roomId,
+          members: getGroupMembers(roomId),
+          settings: Rooms.get(data.id),
+          gameState: gameData,
+          owner: gameData.owner
+        });
+        socket.to(roomId).emit("new-user-joined", {
+          user: ActiveUser.get(socket.id),
+        });
+      }
     });
 
     socket.on("send-group-message", (data) => {
@@ -92,17 +112,40 @@ const InitWs = async (io) => {
 
     socket.on("start-stream", (data) => {
       console.log("stroke postion streaming started", data)
-      socket.broadcast.emit("recieve-start-stream", { userId: userdata.id, username: userdata.username, data })
+      const stroke = {
+        id: data.uuid,
+        kind: data.data.kind,
+        initial: data.data.inital,
+        intermediate: [],
+        final: null,
+        color: data.data.color,
+        width: data.data.width,
+      }
+      ActiveStrokes.set(data.roomId, stroke)
+      socket.to(data.roomId).emit("recieve-start-stream", { userId: userdata.id, username: userdata.username, data })
     })
 
     socket.on("send-stream", (data) => {
       console.log("stroke intermediate positions streaming", data)
-      socket.broadcast.emit("recieve-send-stream", { userId: userdata.id, username: userdata.username, data })
+      const activeStroke = ActiveStrokes.get(data.roomId)
+      if (!activeStroke) return;
+      activeStroke.intermediate.push(...data.data)
+      socket.to(data.roomId).emit("recieve-send-stream", { userId: userdata.id, username: userdata.username, data })
     })
 
     socket.on("end-stream", (data) => {
       console.log("stoke positions streaming ended", data)
-      socket.broadcast.emit("recieve-end-stream", { userId: userdata.id, username: userdata.username, data })
+
+      const activeStroke = ActiveStrokes.get(data.roomId)
+      if (!activeStroke) return
+      activeStroke.final = data.data
+      const exists = GameState.get(data.roomId)
+      if (!exists) {
+        GameState.set(data.roomId, [])
+      }
+      GameState.get(data.roomId).push(activeStroke);
+      ActiveStrokes.delete(data.roomId);
+      socket.to(data.roomId).emit("recieve-end-stream", { userId: userdata.id, username: userdata.username, data })
     })
 
     socket.on("disconnect", () => {
@@ -110,8 +153,6 @@ const InitWs = async (io) => {
       ActiveUser.delete(socket.id);
     });
   });
-
-
 
 
   socketInstance = io;

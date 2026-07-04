@@ -5,8 +5,9 @@ const MeAuth = (req, res, next) => {
   const cookies = req.cookies;
   const data = cookies.info
 
+
   if (!data) {
-    return res.status(401).json({ message: "Unauthorized" });
+    return res.status(401).json({ message: "Unauthorized acess" });
   }
   try {
     const decoded = jwt.verify(data, process.env.INFO_SECRET);

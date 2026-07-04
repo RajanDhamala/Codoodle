@@ -1,7 +1,7 @@
-import { Suspense, useEffect } from "react";
+import { Suspense, type ReactNode, useEffect } from "react";
 import "./index.css";
-import { LazyGamePage, LazyTestPage, LazyLobbyPage } from "./LazyLoading/LazyLoading";
-import { BrowserRouter as Router, Routes, Route, } from "react-router-dom";
+import { LazyTestPage, LazyLobbyPage, GameRoomPage } from "./LazyLoading/LazyLoading";
+import { BrowserRouter as Router, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import queryClient from "./Utils/QueryConfig.tsx";
 import Loader from "./LazyLoading/Loader.tsx";
@@ -25,13 +25,15 @@ type MeResponse = ServerUser & {
 };
 
 const normalizeServerUser = (payload: MeResponse): GuestProfile | null => {
+  const existingProfile = useUserStore.getState().guestProfile;
+  if (!existingProfile) return null;
+
   const user = payload.user || payload.data || payload;
   const id = user.userId ?? user.id;
   const username = (user.username || user.name || "").trim();
 
   if (!id || !username) return null;
 
-  const existingProfile = useUserStore.getState().guestProfile;
   const now = new Date().toISOString();
 
   return {
@@ -42,6 +44,21 @@ const normalizeServerUser = (payload: MeResponse): GuestProfile | null => {
     createdAt: existingProfile?.id === String(id) ? existingProfile.createdAt : now,
     updatedAt: now,
   };
+};
+
+const RequireGameRoomProfile = ({ children }: { children: ReactNode }) => {
+  const guestProfile = useUserStore((state) => state.guestProfile);
+  const location = useLocation();
+
+  return guestProfile ? (
+    children
+  ) : (
+    <Navigate
+      to="/lobby"
+      replace
+      state={{ openProfileSetup: true, returnTo: location.pathname }}
+    />
+  );
 };
 
 function App() {
@@ -91,12 +108,18 @@ function App() {
       <Router>
         <Suspense fallback={<Loader />}>
           <Routes>
-            <Route path="/" element={<LazyGamePage />} />
-            <Route path="/game/:roomId" element={<LazyGamePage />} />
+            <Route path="/" element={<LazyLobbyPage />} />
             <Route path="/test" element={<LazyTestPage />} />
-
             <Route path="/lobby" element={<LazyLobbyPage />} />
 
+            <Route
+              path="/gameRoom/:id"
+              element={
+                <RequireGameRoomProfile>
+                  <GameRoomPage />
+                </RequireGameRoomProfile>
+              }
+            />
             <Route path="/canvas" element={<CanvasPage />} />
             <Route path="*" element={<div className="p-10 text-center text-red-500 font-bold">404 | Page Not Found</div>} />
           </Routes>

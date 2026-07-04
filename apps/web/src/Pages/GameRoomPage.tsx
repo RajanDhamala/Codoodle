@@ -1,25 +1,10 @@
 
-import { io } from "socket.io-client"
-import { v4 as uuidv4 } from 'uuid';
 
-import {
-  Brush,
-  Circle,
-  Copy,
-  Crown,
-  Eraser,
-  LogOut,
-  MessageCircle,
-  Minus,
-  Palette,
-  Play,
-  RotateCcw,
-  Send,
-  Square,
-  Trophy,
-  UserX,
-  Users,
-} from "lucide-react";
+import { v4 as uuidv4 } from 'uuid';
+import { validate as isValidUuid } from "uuid";
+import { createSocket } from "../Utils/socket"
+import useRoomStore from "@/Zustand/RoomStore";
+import { Brush, Circle, Copy, Crown, Eraser, LogOut, MessageCircle, Minus, Palette, Play, RotateCcw, Send, Square, Trophy, UserX, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import useSocketStore from "../SocketStore";
@@ -51,25 +36,18 @@ const toolOptions: Array<{
   ];
 
 const colorOptions = ["#111827", "#ef4444", "#f97316", "#eab308", "#22c55e", "#0ea5e9", "#8b5cf6"];
+const eraserCursor = "url(\"data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='24'%20height='24'%20viewBox='0%200%2024%2024'%20fill='white'%20stroke='black'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M7%2021h10'/%3E%3Cpath%20d='M20.7%208.7l-5.4-5.4a1%201%200%200%200-1.4%200L3.3%2013.9a1%201%200%200%200%200%201.4L8%2020h4l8.7-8.7a1%201%200%200%200%200-1.4Z'/%3E%3Cpath%20d='M12%206l6%206'/%3E%3C/svg%3E\") 4 20, auto";
 
-
-type GameSessionViewProps = {
-  connectionStatus: ConnectionStatus;
-  connectionError: string;
-};
-
-export const GameSessionView = ({
-  connectionStatus,
-  connectionError,
-}: GameSessionViewProps) => {
+const GameRoom = () => {
 
   const guestProfile = useUserStore((state) => state.guestProfile);
   const currentUser = useUserStore((state) => state.currentUser);
   const clearGuestProfile = useUserStore((state) => state.clearGuestProfile);
   const clearCurrentUser = useUserStore((state) => state.clearCurrentUser);
   const socketInstance = useSocketStore((state) => state.socketInstance);
+  const setSocketInstance = useSocketStore((state) => state.setSocketInstance)
   const clearSocketInstance = useSocketStore((state) => state.clearSocketInstance);
-  const [gorupId, setGroupId] = useState<string | null>(null);
+  const { setSettings, setRoomId, clearRoom, Settings, RoomId } = useRoomStore()
 
   const activeUser = useMemo<User | null>(() => {
     if (currentUser) return currentUser;
@@ -88,77 +66,35 @@ export const GameSessionView = ({
   const [activeTool, setActiveTool] = useState<StrokeKind>("path");
   const [strokeColor, setStrokeColor] = useState("#111827");
   const [strokeSize, setStrokeSize] = useState(7);
-  const [draftStroke, setDraftStroke] = useState<Stroke | null>(null);
   const [chatHistry, setChatHistry] = useState([]);
   const [Msg, setMsg] = useState<string>("")
   const [members, setMember] = useState([])
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [settings, setSettings] = useState()
   const [admin, setAdmin] = useState(null)
 
   const url = useParams()
-  const roomId = url.roomId
-
-  console.log("room id:", roomId, url)
-
-  useEffect(() => {
-    if (!socketInstance) return;
-    return () => {
-    };
-  }, [activeUser, joinCode, settingsDraft, socketInstance]);
-
-  const resetProfile = () => {
-    if (room) {
-      toast.error("Leave the room before changing player.");
-      return;
-    }
-    socketInstance?.disconnect();
-    clearSocketInstance(socketInstance);
-    clearGuestProfile();
-    clearCurrentUser();
-  };
-
-
-  const CreateRoom = () => {
-    socketInstance?.emit("create-group", { settings: settingsDraft, currentUser: activeUser });
-    toast.success("Room created successfully!");
-  }
-
-  const joinRoom = () => {
-    const normalizedCode = joinCode.trim()
-    if (!normalizedCode) {
-      toast.error("Enter a room code.");
-      return;
-    }
-    setJoinCode(normalizedCode);
-    socketInstance?.emit("join-group", {
-      id: normalizedCode,
-      roomId: normalizedCode,
-      currentUser: activeUser,
-    });
-    setGroupId(normalizedCode)
-    setRoom({ code: normalizedCode, phase: "lobby", strokes: [], players: [], connectedPlayerCount: 0, totalTurnsBeforeVote: 0, submittedTurns: 0, eligibleVotes: 0 });
-  };
+  const roomRef = useRef("")
+  roomRef.current = String(url.id)
 
   const LeaveRoom = () => {
-    if (!gorupId) {
+    if (!roomRef) {
       return
     }
-    socketInstance?.emit("leave-group", { id: gorupId })
+    socketInstance?.emit("leave-group", { id: RoomId })
     toast.success("room left successfully!")
     setRoom(null)
-    setGroupId(null)
+    setRoomId(null)
   }
 
   const SendGroupMessage = () => {
-    if (!gorupId) {
+    if (!RoomId) {
       return
     }
     const trimmed = Msg.trim()
     if (!trimmed) {
       return
     }
-    socketInstance?.emit("send-group-message", { id: gorupId, message: trimmed })
+    socketInstance?.emit("send-group-message", { id: RoomId, message: trimmed })
     toast.success("message sent successfully!")
     setChatHistry((prev) => {
       return [
@@ -171,16 +107,39 @@ export const GameSessionView = ({
     setMsg("")
   }
 
-  useEffect(() => {
-    if (!socketInstance) return;
-    socketInstance.on("group-created", (data) => {
-      console.log("Room created:", data);
-      setGroupId(data.trimmed);
-      setRoom(data.trimmed)
-      console.log("current user:", currentUser)
-      setAdmin(currentUser)
+  const joinRoom = (id) => {
+    const normalizedCode = id.trim()
+    if (!normalizedCode) {
+      toast.error("invalid room id");
+      return;
+    }
+    console.log("ready to join?", normalizedCode)
+    setJoinCode(normalizedCode);
+    socketInstance?.emit("join-group", {
+      id: normalizedCode,
+      roomId: normalizedCode,
+      currentUser: activeUser,
+    });
+    setRoomId(normalizedCode)
+    // setRoom({ code: normalizedCode, phase: "lobby", strokes: [], players: [], connectedPlayerCount: 0, totalTurnsBeforeVote: 0, submittedTurns: 0, eligibleVotes: 0 });
+  };
 
-    })
+  useEffect(() => {
+    if (!socketInstance) {
+      const io = createSocket()
+      setSocketInstance(io)
+      return
+    };
+
+    if (!RoomId) {
+      console.log("meaining user is visiting the url")
+      if (!isValidUuid(roomRef.current)) {
+        console.log("Invalid UUID");
+        toast.error("invlaid uuid")
+        return;
+      }
+      joinRoom(roomRef.current)
+    }
 
     socketInstance.on("recive-group-message", (data) => {
       console.log("message recived:", data);
@@ -206,8 +165,15 @@ export const GameSessionView = ({
       })
     })
 
+    socketInstance.on("group-created", (data) => {
+      console.log("Room created:", data);
+      setRoomId(data.trimmed);
+      setRoom(data.trimmed)
+      console.log("current user:", currentUser)
+      toast.success("Room created successfully!");
+    })
+
     socketInstance.on("group-joined", (data) => {
-      console.log("data from joining:", data)
       console.log(currentUser?.username || currentUser?.id)
       const filteredMembers = data.members.filter(member => {
         const isCurrentUsername = currentUser?.username && member.username === currentUser.username;
@@ -217,23 +183,106 @@ export const GameSessionView = ({
       });
       setSettings(data.settings)
       console.log("settings i got :", data.settings)
-      setAdmin(data.settings.owner)
-      console.log("owner:", data.settings.owner)
-      setMember(filteredMembers);
+      console.log("owner:", data.settings)
+      toast.success(`Joined room successfully`);
     })
+
+    socketInstance.on("recieve-start-stream", (data: any) => {
+      console.log("some one started drawing")
+      if (!isOpponentDrawing.current) {
+        isOpponentDrawing.current = true
+      }
+      const canvas = canvasRef.current
+      if (!canvas) return
+      const ctx = canvas.getContext("2d")
+      if (!ctx) return
+      ctx.beginPath()
+      const postion = data.data.data.inital
+      const streamId = getRemoteStreamId(data)
+      ctx.moveTo(postion.x, postion.y)
+      remoteStrokeMapRef.current[streamId] = {
+        kind: data.data.data.kind ?? "path",
+        initial: { x: postion.x, y: postion.y },
+        intermediate: [],
+        final: null,
+        color: data.data.data.color,
+        width: Number(data.data.data.width),
+        id: streamId,
+      }
+      ctx.strokeStyle = data.data.data.color
+      ctx.lineWidth = data.data.data.width
+      console.log("drawing has been started btw whoa re u", data)
+    })
+
+    socketInstance.on("recieve-send-stream", (data: any) => {
+      console.log("some one is drawing", data)
+      const canvas = canvasRef.current
+      if (!canvas) return
+      const ctx = canvas.getContext("2d")
+      if (!ctx) return
+      const streamId = getRemoteStreamId(data)
+      const currentStroke = remoteStrokeMapRef.current[streamId]
+      if (!currentStroke) return
+
+      ctx.strokeStyle = currentStroke.color ?? "black"
+      ctx.lineWidth = currentStroke.width ?? 5
+      ctx.lineCap = "round"
+      data.data.data.forEach((res: any) => {
+        const lastPoint = getLastStrokePoint(currentStroke)
+        if (!lastPoint) return
+        if (!isShapeTool(currentStroke.kind)) {
+          drawLineSegment(ctx, lastPoint, res, currentStroke)
+        }
+        currentStroke.intermediate.push(res)
+      })
+    })
+
+    socketInstance.on("recieve-end-stream", (data: any) => {
+      console.log("some one ended drawing", data)
+      const pos = data.data.data
+      const canvas = canvasRef.current
+      if (!canvas) return
+      const ctx = canvas.getContext("2d")
+      if (!ctx) return
+      const streamId = getRemoteStreamId(data)
+      const currentStroke = remoteStrokeMapRef.current[streamId]
+      if (!currentStroke) return
+
+      currentStroke.final = { x: pos.x, y: pos.y }
+      if (isShapeTool(currentStroke.kind)) {
+        drawShapeStroke(ctx, currentStroke, currentStroke.final)
+      } else {
+        const lastPoint = getLastStrokePoint(currentStroke)
+        if (lastPoint) {
+          drawLineSegment(ctx, lastPoint, currentStroke.final, currentStroke)
+        }
+      }
+      addStrokeToHistory(currentStroke)
+      console.log("stroke index:", pointerIndexRef.current)
+      delete remoteStrokeMapRef.current[streamId]
+      isOpponentDrawing.current = Object.keys(remoteStrokeMapRef.current).length > 0
+    })
+
+
     return () => {
-      socketInstance.off("group-created")
       socketInstance.off("recive-group-message")
       socketInstance.off("new-user-joined")
+      socketInstance.off("group-created")
       socketInstance.off("group-joined")
+      socketInstance.off("recieve-start-stream")
+      socketInstance.off("recieve-send-stream")
+      socketInstance.off("recieve-end-stream")
+
+
     }
-  })
+  }, [socketInstance])
 
   type Points = {
     x: number,
     y: number
   }
   type Stroke = {
+    kind?: StrokeKind,
     initial: Points | null,
     intermediate: Points[],
     final: Points | null,
@@ -260,11 +309,12 @@ export const GameSessionView = ({
   const historyLengthRef = useRef(0)
   const [Histry, setHistry] = useState<Stroke[]>([])
   const remoteStrokeMapRef = useRef<Record<string, Stroke>>({})
+  const draftSnapshotRef = useRef<ImageData | null>(null)
   const dummyColor = ["red", "blue", "green", "yellow", "brown", "purple", "pink", "black"]
   const [isConnecting, setisConnecting] = useState<Boolean>(false)
   const [isConnected, setisConnected] = useState<Boolean>(false)
-  const localColorRef = useRef<string>("black")
-  const localWidthRef = useRef<number>(5)
+  const localColorRef = useRef<string>("#111827")
+  const localWidthRef = useRef<number>(7)
   const [socket, setSocket] = useState<any>()
 
   const addStrokeToHistory = (stroke: Stroke) => {
@@ -283,27 +333,6 @@ export const GameSessionView = ({
     })
   }
 
-  useEffect(() => {
-    const socketinstance = io("http://localhost:3000", {
-      transports: ["websocket", "polling"],
-      reconnectionAttempts: 3,
-    })
-    setisConnecting(true)
-
-    socketinstance.on("connected", (data) => {
-      setisConnected(true)
-      setisConnecting(false)
-      setSocket(socketinstance)
-    })
-
-    setSocket(socketinstance)
-
-    return () => {
-      socketinstance.off("connected")
-      setisConnecting(false)
-      setisConnected(false)
-    }
-  }, [])
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -317,8 +346,8 @@ export const GameSessionView = ({
 
     ctx.fillStyle = bgColor
     ctx.fillRect(0, 0, canvas.width, canvas.height)
-    ctx.strokeStyle = "black"
-    ctx.lineWidth = strokeSize
+    ctx.strokeStyle = localColorRef.current
+    ctx.lineWidth = localWidthRef.current
     // canvas.style.cursor = "not-allowed";
     // will be shown when not user turn
     ctx.lineCap = "round"
@@ -373,19 +402,19 @@ export const GameSessionView = ({
       bufferRef.current = arrayLength
       isActiveRef.current = false
       throttleTimerRef.current = null
-    }, 100)
+    }, 300)
   }
 
   const StartEventStream = (data) => {
     const uuid = uuidv4()
     activeIdref.current = uuid
-    socket.emit("start-stream", { data, uuid })
+    socketInstance?.emit("start-stream", { data, uuid, "roomId": RoomId })
   }
   const SendEventStream = (data: any) => {
     if (isBlockedref.current) {
       return
     }
-    socket.emit("send-stream", { data, id: activeIdref.current })
+    socketInstance?.emit("send-stream", { data, id: activeIdref.current, "roomId": RoomId })
     console.log("event stream sent")
   }
 
@@ -404,19 +433,92 @@ export const GameSessionView = ({
     if (bufferLength2send > 0) {
       bufferRef.current = arrayLength
 
-      socket.emit("send-stream", {
+      socketInstance?.emit("send-stream", {
         data: duplicated,
-        id: activeIdref.current
+        id: activeIdref.current,
+        "roomId": RoomId
       })
     }
 
     isBlockedref.current = true
-    socket.emit("end-stream", {
+    socketInstance?.emit("end-stream", {
       data: data.final,
-      id: activeIdref.current
+      id: activeIdref.current,
+      "roomId": RoomId
     })
 
     activeIdref.current = null
+  }
+
+  const isShapeTool = (kind?: StrokeKind) => {
+    return kind === "line" || kind === "rect" || kind === "circle"
+  }
+
+  const applyStrokeStyle = (ctx: CanvasRenderingContext2D, stroke: Stroke) => {
+    ctx.lineCap = "round"
+    ctx.lineJoin = "round"
+    ctx.lineWidth = stroke.width ?? localWidthRef.current
+    ctx.strokeStyle = stroke.color ?? localColorRef.current
+    ctx.globalCompositeOperation = stroke.kind === "eraser" ? "destination-out" : "source-over"
+  }
+
+  const drawLineSegment = (
+    ctx: CanvasRenderingContext2D,
+    start: Points,
+    end: Points,
+    stroke: Stroke
+  ) => {
+    ctx.save()
+    applyStrokeStyle(ctx, stroke)
+    ctx.beginPath()
+    ctx.moveTo(start.x, start.y)
+    ctx.lineTo(end.x, end.y)
+    ctx.stroke()
+    ctx.closePath()
+    ctx.restore()
+  }
+
+  const drawShapeStroke = (
+    ctx: CanvasRenderingContext2D,
+    stroke: Stroke,
+    finalPoint: Points
+  ) => {
+    if (!stroke.initial) {
+      return
+    }
+
+    ctx.save()
+    applyStrokeStyle(ctx, stroke)
+    ctx.beginPath()
+
+    if (stroke.kind === "line") {
+      ctx.moveTo(stroke.initial.x, stroke.initial.y)
+      ctx.lineTo(finalPoint.x, finalPoint.y)
+    }
+
+    if (stroke.kind === "rect") {
+      ctx.rect(
+        stroke.initial.x,
+        stroke.initial.y,
+        finalPoint.x - stroke.initial.x,
+        finalPoint.y - stroke.initial.y
+      )
+    }
+
+    if (stroke.kind === "circle") {
+      const radius = Math.hypot(finalPoint.x - stroke.initial.x, finalPoint.y - stroke.initial.y)
+      ctx.arc(stroke.initial.x, stroke.initial.y, radius, 0, Math.PI * 2)
+    }
+
+    ctx.stroke()
+    ctx.closePath()
+    ctx.restore()
+  }
+
+  const restoreDraftSnapshot = (ctx: CanvasRenderingContext2D) => {
+    if (draftSnapshotRef.current) {
+      ctx.putImageData(draftSnapshotRef.current, 0, 0)
+    }
   }
 
   const onMouseDown = (e: React.MouseEvent<HTMLCanvasElement, MouseEvent>) => {
@@ -427,53 +529,60 @@ export const GameSessionView = ({
     if (!canvas) return
     const ctx = canvas.getContext("2d")
     if (!ctx) return
-    ctx.beginPath()
     const pos = getMousePos(e)
-    ctx.moveTo(pos.x, pos.y)
 
-    localStrokeRef.current.initial = { x: pos.x, y: pos.y }
-    ctx.strokeStyle = localColorRef.current
-    ctx.lineWidth = localWidthRef.current
-    const data = { color: localColorRef.current, width: localWidthRef.current, inital: { x: pos.x, y: pos.y } }
+    localStrokeRef.current = {
+      kind: activeTool,
+      initial: { x: pos.x, y: pos.y },
+      intermediate: [],
+      final: null,
+      color: localColorRef.current,
+      width: localWidthRef.current,
+      id: null,
+    }
+    draftSnapshotRef.current = isShapeTool(activeTool)
+      ? ctx.getImageData(0, 0, canvas.width, canvas.height)
+      : null
+    const data = { color: localColorRef.current, width: localWidthRef.current, inital: { x: pos.x, y: pos.y }, kind: activeTool }
     isBlockedref.current = false
     StartEventStream(data)
   }
 
   const onMouseUp = (e: React.MouseEvent<HTMLCanvasElement, MouseEvent>) => {
-    if (isUDrawing.current) {
-      isUDrawing.current = false
-    }
+    if (!isUDrawing.current) return
+    isUDrawing.current = false
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext("2d")
     if (!ctx) return
     const pos = getMousePos(e)
 
-    const lastPoint = localStrokeRef.current.intermediate[localStrokeRef.current.intermediate.length - 1] ?? localStrokeRef.current.initial
-    if (lastPoint) {
-      ctx.beginPath()
-      ctx.strokeStyle = localColorRef.current
-      ctx.lineWidth = localWidthRef.current
-      ctx.lineCap = "round"
-      ctx.moveTo(lastPoint.x, lastPoint.y)
-      ctx.lineTo(pos.x, pos.y)
-      ctx.stroke()
-      ctx.closePath()
+    if (isShapeTool(localStrokeRef.current.kind)) {
+      restoreDraftSnapshot(ctx)
+      drawShapeStroke(ctx, localStrokeRef.current, pos)
+    } else {
+      const lastPoint = localStrokeRef.current.intermediate[localStrokeRef.current.intermediate.length - 1] ?? localStrokeRef.current.initial
+      if (lastPoint) {
+        drawLineSegment(ctx, lastPoint, pos, localStrokeRef.current)
+      }
     }
 
     localStrokeRef.current.final = { x: pos.x, y: pos.y }
-    const selected = ctx.strokeStyle
-    const width = ctx.lineWidth
-    localStrokeRef.current.width = width
-    localStrokeRef.current.color = String(selected)
-    ctx.closePath()
-    const finishedStroke = { ...localStrokeRef.current }
+    localStrokeRef.current.width = localWidthRef.current
+    localStrokeRef.current.color = localColorRef.current
+    const finishedStroke = {
+      ...localStrokeRef.current,
+      initial: localStrokeRef.current.initial ? { ...localStrokeRef.current.initial } : null,
+      intermediate: [...localStrokeRef.current.intermediate],
+      final: localStrokeRef.current.final ? { ...localStrokeRef.current.final } : null,
+    }
     addStrokeToHistory(finishedStroke)
     // EmitStroker(currentStroke)
     const data = {
       final: localStrokeRef.current.final,
       color: localStrokeRef.current.color,
       width: localStrokeRef.current.width,
+      kind: localStrokeRef.current.kind,
     }
     EndEventStream(data)
     localStrokeRef.current = {
@@ -483,6 +592,7 @@ export const GameSessionView = ({
       color: null,
       width: null
     }
+    draftSnapshotRef.current = null
     bufferRef.current = 0
   }
 
@@ -495,11 +605,19 @@ export const GameSessionView = ({
     if (!canvas) return
     const ctx = canvas.getContext("2d")
     if (!ctx) return
-    const res = getMousePos(e)
-    ctx.lineTo(res.x, res.y)
-    ctx.stroke()
-
     const pos = getMousePos(e)
+
+    if (isShapeTool(localStrokeRef.current.kind)) {
+      restoreDraftSnapshot(ctx)
+      drawShapeStroke(ctx, localStrokeRef.current, pos)
+      return
+    }
+
+    const lastPoint = localStrokeRef.current.intermediate[localStrokeRef.current.intermediate.length - 1] ?? localStrokeRef.current.initial
+    if (lastPoint) {
+      drawLineSegment(ctx, lastPoint, pos, localStrokeRef.current)
+    }
+
     console.log("postion iz", pos)
     localStrokeRef.current.intermediate.push(pos)
     Thottler(localStrokeRef.current)
@@ -509,11 +627,13 @@ export const GameSessionView = ({
     if (isUDrawing.current) {
       isUDrawing.current = false
     }
+    setStrokeColor(color)
+    localColorRef.current = color
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext("2d")
     if (!ctx) return
-    localColorRef.current = color
+    ctx.strokeStyle = color
   }
 
   useEffect(() => {
@@ -522,6 +642,7 @@ export const GameSessionView = ({
     const ctx = canvas.getContext("2d")
     if (!ctx) return
     ctx.lineWidth = strokeSize
+    localWidthRef.current = strokeSize
   }, [strokeSize])
 
 
@@ -530,10 +651,14 @@ export const GameSessionView = ({
       return
     }
 
+    if (isShapeTool(item.kind)) {
+      drawShapeStroke(ctx, item, item.final)
+      return
+    }
+
+    ctx.save()
+    applyStrokeStyle(ctx, item)
     ctx.beginPath()
-    ctx.lineCap = "round"
-    ctx.lineWidth = item.width ?? 5
-    ctx.strokeStyle = item.color ?? "black"
     ctx.moveTo(item.initial.x, item.initial.y)
 
     item.intermediate.forEach((position) => {
@@ -543,6 +668,7 @@ export const GameSessionView = ({
     ctx.lineTo(item.final.x, item.final.y)
     ctx.stroke()
     ctx.closePath()
+    ctx.restore()
   }
 
   const redrawHistoryUntil = (targetIndex: number) => {
@@ -562,6 +688,7 @@ export const GameSessionView = ({
     ctx.strokeStyle = localColorRef.current
     ctx.lineWidth = localWidthRef.current
     ctx.lineCap = "round"
+    ctx.globalCompositeOperation = "source-over"
   }
 
 
@@ -581,19 +708,6 @@ export const GameSessionView = ({
     redrawHistoryUntil(nextIndex)
     console.log("final strokeIndex after undo:", nextIndex)
   }
-
-  const HandleClear = () => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    setHistry([])
-    historyLengthRef.current = 0
-    pointerIndexRef.current = -1
-    activeIdref.current = null
-  }
-
 
   const getMousePos = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current!;
@@ -623,226 +737,12 @@ export const GameSessionView = ({
   }
 
   const getRemoteStreamId = (data: any) => {
-    return String(data.data.id ?? "remote")
+    return String(data.data.uuid ?? data.data.id ?? "remote")
   }
 
   const getLastStrokePoint = (stroke: Stroke) => {
     const lastIntermediate = stroke.intermediate[stroke.intermediate.length - 1]
     return lastIntermediate ?? stroke.initial
-  }
-
-  useEffect(() => {
-    if (!socket) {
-      return
-    }
-
-    socket.on("recieve-start-stream", (data: any) => {
-      console.log("some one started drawing")
-      if (!isOpponentDrawing.current) {
-        isOpponentDrawing.current = true
-      }
-      const canvas = canvasRef.current
-      if (!canvas) return
-      const ctx = canvas.getContext("2d")
-      if (!ctx) return
-      ctx.beginPath()
-      const postion = data.data.data.inital
-      const streamId = getRemoteStreamId(data)
-      console.log("postion:", postion)
-      ctx.moveTo(postion.x, postion.y)
-      remoteStrokeMapRef.current[streamId] = {
-        initial: { x: postion.x, y: postion.y },
-        intermediate: [],
-        final: null,
-        color: data.data.data.color,
-        width: Number(data.data.data.width),
-        id: streamId,
-      }
-      ctx.strokeStyle = data.data.data.color
-      ctx.lineWidth = data.data.data.width
-      console.log(data.data.data.color, data.data.data.width)
-    })
-
-    socket.on("recieve-send-stream", (data: any) => {
-      console.log("some one is drawing", data)
-      const canvas = canvasRef.current
-      if (!canvas) return
-      const ctx = canvas.getContext("2d")
-      if (!ctx) return
-      const streamId = getRemoteStreamId(data)
-      const currentStroke = remoteStrokeMapRef.current[streamId]
-      if (!currentStroke) return
-
-      ctx.strokeStyle = currentStroke.color ?? "black"
-      ctx.lineWidth = currentStroke.width ?? 5
-      ctx.lineCap = "round"
-      data.data.data.forEach((res: any) => {
-        const lastPoint = getLastStrokePoint(currentStroke)
-        if (!lastPoint) return
-        ctx.beginPath()
-        ctx.moveTo(lastPoint.x, lastPoint.y)
-        ctx.lineTo(res.x, res.y)
-        ctx.stroke()
-        ctx.closePath()
-        currentStroke.intermediate.push(res)
-      })
-    })
-
-    socket.on("recieve-end-stream", (data: any) => {
-      console.log("some one ended drawing", data)
-      const pos = data.data.data
-      const canvas = canvasRef.current
-      if (!canvas) return
-      const ctx = canvas.getContext("2d")
-      if (!ctx) return
-      const streamId = getRemoteStreamId(data)
-      const currentStroke = remoteStrokeMapRef.current[streamId]
-      if (!currentStroke) return
-
-      const lastPoint = getLastStrokePoint(currentStroke)
-      if (lastPoint) {
-        ctx.beginPath()
-        ctx.strokeStyle = currentStroke.color ?? "black"
-        ctx.lineWidth = currentStroke.width ?? 5
-        ctx.lineCap = "round"
-        ctx.moveTo(lastPoint.x, lastPoint.y)
-        ctx.lineTo(pos.x, pos.y)
-        ctx.stroke()
-        ctx.closePath()
-      }
-
-      currentStroke.final = { x: pos.x, y: pos.y }
-      addStrokeToHistory(currentStroke)
-      console.log("stroke index:", pointerIndexRef.current)
-      delete remoteStrokeMapRef.current[streamId]
-      isOpponentDrawing.current = Object.keys(remoteStrokeMapRef.current).length > 0
-    })
-
-    return () => {
-      socket.off("draw")
-      socket.off("recieve-start-stream")
-      socket.off("recieve-send-stream")
-      socket.off("recieve-end-stream")
-    }
-  }, [socket])
-
-  if (connectionStatus === "error" && !currentUser) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-zinc-950 px-4 text-zinc-50">
-        <section className="w-full max-w-md rounded-2xl border border-red-500/30 bg-red-500/10 p-6 text-center">
-          <h1 className="text-2xl font-semibold">Could not connect</h1>
-          <p className="mt-3 text-sm leading-6 text-red-100/80">
-            The game server rejected this guest player. Server said: {connectionError}
-          </p>
-          <button
-            type="button"
-            onClick={resetProfile}
-            className="mt-5 inline-flex rounded-xl bg-white px-4 py-2 text-sm font-semibold text-zinc-950"
-          >
-            Set up player again
-          </button>
-        </section>
-      </main>
-    );
-  }
-
-  if (!room) {
-    if (!guestProfile) return null;
-
-    return (
-      <main className="min-h-screen bg-zinc-950 px-4 py-8 text-zinc-50">
-        <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-6xl items-center">
-          <section className="grid w-full gap-5 lg:grid-cols-[1.2fr_0.8fr]">
-            <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl shadow-black/30 sm:p-8">
-              <p className="text-sm font-medium uppercase tracking-[0.24em] text-sky-300">
-                Drawing imposter
-              </p>
-              <h1 className="mt-4 max-w-2xl text-4xl font-semibold tracking-tight sm:text-6xl">
-                Draw one stroke, hide the clue, catch the imposter.
-              </h1>
-              <p className="mt-5 max-w-2xl text-base leading-7 text-zinc-300">
-                Create a private room, share the code, and play a fast turn-based canvas game.
-                Artists see the exact word. The imposter only sees the category.
-              </p>
-              <div className="mt-8 grid gap-3 sm:grid-cols-3">
-                <InfoTile label="Mode" value="Live rooms" />
-                <InfoTile label="Turns" value="One action" />
-                <InfoTile label="Server" value={connectionStatus} />
-              </div>
-              <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-zinc-950/70 p-3">
-                <div className="flex min-w-0 items-center gap-3">
-                  <AvatarBadge
-                    avatar={guestProfile.avatar}
-                    name={guestProfile.username}
-                    className="h-12 w-12"
-                  />
-                  <div className="min-w-0">
-                    <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                      Playing as
-                    </p>
-                    <p className="truncate font-semibold text-zinc-100">
-                      {guestProfile.username}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={resetProfile}
-                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-zinc-200 transition hover:bg-white/10"
-                >
-                  Change player
-                </button>
-              </div>
-              <p className="mt-5 text-xs text-zinc-500">Socket URL: {socketBaseUrl}</p>
-            </div>
-
-            <div className="space-y-5">
-
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-400 text-zinc-950">
-                  <Play className="h-5 w-5" />
-                </div>
-                <div>
-                  <h2 className="font-semibold">Create room</h2>
-                  <p className="text-sm text-zinc-400">You become the host.</p>
-                </div>
-              </div>
-
-              <SettingsControls
-                settings={settingsDraft}
-                setSettings={setSettingsDraft}
-                disabled={false}
-              />
-
-              <button
-                type="submit"
-                className="mt-5 w-full rounded-xl bg-sky-400 px-4 py-3 text-sm font-semibold text-zinc-950 transition hover:bg-sky-300"
-                onClick={CreateRoom}
-              >
-                Create game room
-              </button>
-
-              <h2 className="font-semibold">Join room</h2>
-              <p className="mt-1 text-sm text-zinc-400">Paste a room code from the host.</p>
-              <input
-                value={joinCode}
-                onChange={(event) => setJoinCode(event.target.value)}
-                placeholder="ABC123"
-                className="mt-4 w-full rounded-xl border border-white/10 bg-zinc-950 px-4 py-3 text-center text-lg font-semibold tracking-[0.35em] outline-none ring-sky-400/40 transition focus:ring-4"
-                maxLength={6}
-              />
-              <button
-                type="submit"
-                className="mt-4 w-full rounded-xl border border-white/10 bg-white px-4 py-3 text-sm font-semibold text-zinc-950 transition hover:bg-zinc-200"
-                onClick={joinRoom}
-              >
-                Join room
-              </button>
-            </div>
-          </section>
-        </div>
-      </main>
-    );
   }
 
   const visibleMembers = members as Array<Partial<User>>;
@@ -859,7 +759,7 @@ export const GameSessionView = ({
               <button
                 onClick={() => {
                   var textField = document.createElement('textarea')
-                  textField.innerText = gorupId || "not avilable"
+                  textField.innerText = RoomId || "not avilable"
                   document.body.appendChild(textField)
                   textField.select()
                   document.execCommand('copy')
@@ -869,7 +769,7 @@ export const GameSessionView = ({
                 }}
                 className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 font-mono text-zinc-100 transition hover:bg-white/10"
               >
-                {gorupId || "not avilable"}
+                {RoomId || "not avilable"}
                 <Copy className="h-3.5 w-3.5" />
               </button>
             </div>
@@ -982,7 +882,6 @@ export const GameSessionView = ({
                 <div className="mb-1 flex justify-between text-xs text-zinc-500">
                   <span>Action progress</span>
                   <span>
-                    {room.submittedTurns}/{room.totalTurnsBeforeVote || 0}
                   </span>
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-white/10">
@@ -996,6 +895,7 @@ export const GameSessionView = ({
             <canvas
               ref={canvasRef}
               className=" rounded-xl bg-white "
+              style={{ cursor: activeTool === "eraser" ? eraserCursor : "crosshair" }}
               onPointerDown={onMouseDown}
               height={500}
               width={800}
@@ -1027,25 +927,30 @@ export const GameSessionView = ({
               <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-2">
                   <Palette className="h-4 w-4 text-zinc-400" />
-                  {colorOptions.map((color) => (
-                    <button
-                      key={color}
-                      onClick={() => {
+                  {colorOptions.map((color) => {
+                    const isSelectedColor = strokeColor.toLowerCase() === color.toLowerCase();
+                    return (
+                      <button
+                        key={color}
+                        onClick={() => {
 
-                        HandelColorSelect(color)
+                          HandelColorSelect(color)
 
-                      }}
-                      className={`h-7 w-7 rounded-full border-2 ${strokeColor === color ? "border-white" : "border-transparent"
-                        }`}
-                      style={{ background: color }}
-                      aria-label={`Use color ${color}`}
-                    />
-                  ))}
+                        }}
+                        className={`h-7 w-7 rounded-full border-2 transition ${isSelectedColor
+                          ? "scale-110 border-white shadow-[0_0_0_4px_rgba(14,165,233,0.45)]"
+                          : "border-transparent hover:border-white/50"
+                          }`}
+                        style={{ background: color }}
+                        aria-label={`Use color ${color}`}
+                      />
+                    );
+                  })}
                   <input
                     type="color"
                     value={strokeColor}
                     onChange={(event) => {
-                      HandelColorSelect(strokeColor)
+                      HandelColorSelect(event.currentTarget.value)
                     }
                     }
                     className="h-8 w-9 rounded-lg border border-white/10 bg-transparent"
@@ -1057,7 +962,7 @@ export const GameSessionView = ({
                     type="range"
                     min={2}
                     max={32}
-                    value={localWidthRef.current}
+                    value={strokeSize}
                     onChange={(e) => {
                       setStrokeSize(Number(e.currentTarget.value))
                       const value = Number(e.currentTarget.value)
@@ -1091,14 +996,14 @@ export const GameSessionView = ({
         </section>
 
         <aside className="space-y-4">
-          {room.phase === "voting" && (
+          {room?.phase === "voting" && (
             <Panel>
               <h2 className="font-semibold">Vote</h2>
               <p className="mt-1 text-sm text-zinc-400">
-                {room.votesCount}/{room.eligibleVotes} connected players voted.
+                {room?.votesCount}/{room.eligibleVotes} connected players voted.
               </p>
               <div className="mt-4 space-y-2">
-                {room.players
+                {room?.players
                   .filter((player) => player.id !== activeUser?.id)
                   .map((player) => (
                     <button
@@ -1115,7 +1020,7 @@ export const GameSessionView = ({
             </Panel>
           )}
 
-          {room.phase === "results" && room.result && <ResultsPanel result={room.result} />}
+          {room?.phase === "results" && room.result && <ResultsPanel result={room.result} />}
 
           <Panel>
             <div className="flex items-center justify-between gap-3">
@@ -1326,3 +1231,6 @@ const SettingsControls = ({
     </label>
   </div>
 );
+
+
+export default GameRoom;

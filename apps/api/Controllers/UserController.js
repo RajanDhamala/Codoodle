@@ -6,6 +6,7 @@ import jwt from "jsonwebtoken"
 import prisma from "../Utils/Prisma.js"
 import { CreateAccessToken, CreateRefreshToken } from "../Utils/AuthUtils.js"
 import { v4 as uuidv4 } from "uuid";
+import { z } from "zod";
 
 const HandelOauthCallback = asyncHandler(async (req, res) => {
   try {
@@ -87,28 +88,40 @@ const HandelOauthCallback = asyncHandler(async (req, res) => {
 })
 
 
-const SetupUser = asyncHandler(async (req, res) => {
-  const { name, avatar } = req.body
+const setupUserSchema = z.object({
+  name: z.string().trim().min(1, "Name is required").max(30),
+  avatar: z.string().min(1, "Avatar is required"),
+});
 
-  console.log("name", name)
-  console.log("prefrences", avatar)
-  const usrId = uuidv4()
-  const token = CreateInfo(usrId, name, avatar)
+const SetupUser = asyncHandler(async (req, res) => {
+  const result = setupUserSchema.safeParse(req.body);
+
+  if (!result.success) {
+    return res.status(400).json({
+      message: "Validation failed",
+      errors: result.error().fieldErrors,
+    });
+  }
+
+  const { name, avatar } = result.data;
+
+  const usrId = uuidv4();
+  const token = CreateInfo(usrId, name, avatar);
+  console.log("avtar:", avatar)
 
   res.cookie("info", token, {
-    sameSite: "strict",
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    timeout: 1000 * 60 * 60 * 24 * 7, // 7 days
-  })
-
+    sameSite: "strict",
+    maxAge: 1000 * 60 * 60 * 24 * 7,
+  });
 
   return res.status(200).json({
-    "message": "User Info Setup Successfully",
-    "data": {
-      "id": usrId,
-    }
-  })
-})
+    message: "User setup completed successfully",
+    data: {
+      id: usrId,
+    },
+  });
+});
 
 export { HandelOauthCallback, SetupUser }
