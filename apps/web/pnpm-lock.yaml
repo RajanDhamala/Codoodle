@@ -47,6 +47,9 @@ importers:
       tailwindcss:
         specifier: ^4.3.0
         version: 4.3.1
+      uuid:
+        specifier: ^14.0.1
+        version: 14.0.1
       zustand:
         specifier: ^5.0.13
         version: 5.0.14(@types/react@19.2.17)(react@19.2.7)
@@ -1440,6 +1443,10 @@ packages:
   uri-js@4.4.1:
     resolution: {integrity: sha512-7rKUyy33Q1yc98pQ1DAmLtwX109F7TIfWlW1Ydo8Wl1ii1SeHieeh0HHfPeL2fMXK6z0s8ecKs9frCuLJvndBg==}
 
+  uuid@14.0.1:
+    resolution: {integrity: sha512-6ZxzVpzDXDa3bJWaHilVayA+BH/1zmxCJoVgvmqJnid/gPoKHxUrS/aC/T6LGQtNHT+XHG9fXPJB4d+IrU30Ew==}
+    hasBin: true
+
   vite@7.3.5:
     resolution: {integrity: sha512-KuOaNhcnGFN2zIPGA7wRmzF+lJA1sea7rHq17aiJ++9lzY1WWG6Jpwqwe1KNbRVPIqHmr8GLYx7jbrQcN/7/ww==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -2786,6 +2793,8 @@ snapshots:
   uri-js@4.4.1:
     dependencies:
       punycode: 2.3.1
+
+  uuid@14.0.1: {}
 
   vite@7.3.5(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0):
     dependencies:

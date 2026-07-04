@@ -11,6 +11,7 @@ import {
   avatarPatternOptions,
   createGuestProfile,
   createRandomAvatar,
+  encodeAvatarConfig,
   getRandomUsername,
   isValidUsername,
   type AvatarConfig,
@@ -56,7 +57,7 @@ export const GuestProfileSetup = ({ onSave }: { onSave: (profile: GuestProfile) 
     try {
       const payload = (await api.post("/user/init", {
         name: profile.username,
-        avatar: profile.avatar,
+        avatar: encodeAvatarConfig(profile.avatar),
       })) as unknown as InitUserResponse;
       const serverId = payload.data?.id ?? payload.id;
       const now = new Date().toISOString();

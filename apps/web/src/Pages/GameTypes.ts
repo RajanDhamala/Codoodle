@@ -1,6 +1,7 @@
 import type { AvatarConfig } from "../Utils/guestProfile";
 
 export type GamePhase = "lobby" | "drawing" | "voting" | "results";
+export type ConnectionStatus = "setup" | "connecting" | "connected" | "disconnected" | "error";
 export type StrokeKind = "path" | "eraser" | "line" | "rect" | "circle";
 
 export type Point = {
@@ -27,6 +28,13 @@ export type GameSettings = {
   turnCyclesBeforeVote: number;
   allowUndo: boolean;
   allowKick: boolean;
+};
+
+export const defaultGameSettings: GameSettings = {
+  maxPlayers: 6,
+  turnCyclesBeforeVote: 3,
+  allowUndo: true,
+  allowKick: true,
 };
 
 export type Stroke = {

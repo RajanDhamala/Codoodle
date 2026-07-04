@@ -10,9 +10,7 @@ interface ApiResponse<T = unknown> {
 }
 
 const api: AxiosInstance = axios.create({
-  baseURL:
-    import.meta.env.VITE_API_URL ||
-    `${window.location.protocol}//${window.location.hostname}:3000`,
+  baseURL: import.meta.env.VITE_API_URL || "http://localhost:3000",
   timeout: 10000,
   withCredentials: true,
   headers: { "Content-Type": "application/json" },
@@ -21,7 +19,6 @@ const api: AxiosInstance = axios.create({
 api.interceptors.response.use(
   (response) => {
     const payload = response.data as ApiResponse | unknown;
-
     if (
       payload &&
       typeof payload === "object" &&

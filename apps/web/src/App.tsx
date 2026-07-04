@@ -1,6 +1,6 @@
 import { Suspense, useEffect } from "react";
 import "./index.css";
-import { LazyGamePage, LazyTestPage } from "./LazyLoading/LazyLoading";
+import { LazyGamePage, LazyTestPage, LazyLobbyPage } from "./LazyLoading/LazyLoading";
 import { BrowserRouter as Router, Routes, Route, } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import queryClient from "./Utils/QueryConfig.tsx";
@@ -62,7 +62,6 @@ function App() {
         })) as unknown as MeResponse;
 
         if (!isActive) return;
-
         completeUserBootstrap(normalizeServerUser(payload));
       } catch {
         if (!isActive || controller.signal.aborted) return;
@@ -93,8 +92,10 @@ function App() {
         <Suspense fallback={<Loader />}>
           <Routes>
             <Route path="/" element={<LazyGamePage />} />
-            <Route path="/game" element={<LazyGamePage />} />
+            <Route path="/game/:roomId" element={<LazyGamePage />} />
             <Route path="/test" element={<LazyTestPage />} />
+
+            <Route path="/lobby" element={<LazyLobbyPage />} />
 
             <Route path="/canvas" element={<CanvasPage />} />
             <Route path="*" element={<div className="p-10 text-center text-red-500 font-bold">404 | Page Not Found</div>} />

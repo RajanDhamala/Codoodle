@@ -1,11 +1,17 @@
+import type { CSSProperties } from "react";
 import { sanitizeAvatarConfig, type AvatarConfig } from "../Utils/guestProfile";
+
+type AvatarDimension = number | string;
+
+const getAvatarDimension = (value: AvatarDimension) =>
+  typeof value === "number" ? `${value}px` : value;
 
 export const AvatarBadge = ({
   avatar,
   name,
   className = "h-10 w-10",
 }: {
-  avatar?: AvatarConfig;
+  avatar?: AvatarConfig | string;
   name?: string;
   className?: string;
 }) => {
@@ -14,6 +20,37 @@ export const AvatarBadge = ({
   return (
     <span
       className={`inline-flex shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-zinc-900 ${className}`}
+      aria-label={name ? `${name} avatar` : "Player avatar"}
+      role="img"
+    >
+      <AvatarSvg avatar={safeAvatar} />
+    </span>
+  );
+};
+
+export const AvatarFromCode = ({
+  avatarCode,
+  name,
+  width = 64,
+  height = 64,
+  className = "",
+}: {
+  avatarCode: string;
+  name?: string;
+  width?: AvatarDimension;
+  height?: AvatarDimension;
+  className?: string;
+}) => {
+  const safeAvatar = sanitizeAvatarConfig(avatarCode);
+  const style: CSSProperties = {
+    width: getAvatarDimension(width),
+    height: getAvatarDimension(height),
+  };
+
+  return (
+    <span
+      className={`inline-flex shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-zinc-900 ${className}`}
+      style={style}
       aria-label={name ? `${name} avatar` : "Player avatar"}
       role="img"
     >
