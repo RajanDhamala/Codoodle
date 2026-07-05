@@ -16,6 +16,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { createSocket } from "../Utils/socket";
 import { GuestProfileSetup } from "./GuestProfileSetup";
 import type { GuestProfile } from "../Utils/guestProfile";
+import { validate as isValidUuid } from "uuid";
 
 type LobbyLocationState = {
   openProfileSetup?: boolean;
@@ -67,8 +68,20 @@ const LobbyPage = () => {
       setIsProfileModalOpen(true);
       return;
     }
+    console.log("Creating room with settings:", settingsDraft, "and user:", activeUser);
+    console.log("current user:", currentUser)
 
-    socketInstance?.emit("create-group", { settings: settingsDraft, currentUser: activeUser });
+    socketInstance?.emit("create-group", { settings: settingsDraft, currentUser: activeUser }, (data) => {
+      if (data.success) {
+        console.log("Room created:", data.roomId);
+        setRoomId(data.roomId);
+        setRoom(data.roomId);
+        toast.success("Room created successfully!");
+        navigate(`/gameRoom/${data.roomId}`);
+      } else {
+        toast.error(data.message || "Failed to create room.");
+      }
+    });
   }
 
   const resetProfile = () => {
@@ -115,6 +128,10 @@ const LobbyPage = () => {
     const roomCode = joinCode.trim();
     if (!roomCode) {
       toast.error("Paste a room code.");
+      return;
+    }
+    if (!isValidUuid(roomCode)) {
+      toast.error("Invalid room code.");
       return;
     }
 
@@ -171,6 +188,26 @@ const LobbyPage = () => {
           className="mt-1 w-full rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-sm outline-none ring-sky-400/40 transition focus:ring-4 disabled:opacity-50"
         />
       </label>
+      <label className="block">
+        <span className="text-sm text-zinc-400">Max strokes per turn</span>
+        <input
+          type="number"
+          min={1}
+          max={3}
+          value={settings.maxStrokesPerTurn}
+          disabled={disabled}
+          onChange={(event) =>
+            setSettings((previous) => ({
+              ...previous,
+              maxStrokesPerTurn: Math.min(3, Math.max(1, Number(event.target.value))),
+            }))
+          }
+          className="mt-1 w-full rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-sm outline-none ring-sky-400/40 transition focus:ring-4 disabled:opacity-50"
+        />
+        <span className="mt-1 block text-xs text-zinc-500">
+          Server-enforced limit, max 3.
+        </span>
+      </label>
       <label className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm">
         <span>Allow draft undo</span>
         <input
@@ -221,19 +258,8 @@ const LobbyPage = () => {
       setSocketInstance(io)
       return
     };
-    socketInstance.on("group-created", (data) => {
-      console.log("Room created:", data);
-      setRoomId(data.trimmed);
-      setRoom(data.trimmed)
-      console.log("current user:", currentUser)
-      toast.success("Room created successfully!");
-      navigate(`/gameRoom/${data.trimmed}`);
-    })
 
-    return () => {
-      socketInstance.off("group-created")
-    }
-  }, [currentUser, navigate, setRoomId, setSocketInstance, socketInstance])
+  }, [])
 
   const InfoTile = ({ label, value }: { label: string; value: string }) => (
     <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">

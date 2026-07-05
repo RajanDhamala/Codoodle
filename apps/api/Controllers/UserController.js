@@ -7,10 +7,11 @@ import prisma from "../Utils/Prisma.js"
 import { CreateAccessToken, CreateRefreshToken } from "../Utils/AuthUtils.js"
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
+import { getRequiredEnv } from "../Utils/env.js";
 
 const HandelOauthCallback = asyncHandler(async (req, res) => {
   try {
-    const secret = process.env.CLIENT_SECRET;
+    const secret = getRequiredEnv("CLIENT_SECRET");
     const token = String(req.query.token || "");
     const user = jwt.verify(token, secret);
 
@@ -79,7 +80,7 @@ const HandelOauthCallback = asyncHandler(async (req, res) => {
         .json(new ApiResponse(200, "OAuth session created", payload));
     }
 
-    return res.redirect("http://localhost:5173/")
+    return res.redirect(getRequiredEnv("CLIENT_URL"))
 
   } catch (err) {
     console.log("err", err.message)

@@ -1,6 +1,7 @@
 
 
 import axios, { type AxiosInstance, type AxiosResponse } from "axios";
+import { apiBaseUrl } from "./env";
 
 interface ApiResponse<T = unknown> {
   success: boolean;
@@ -10,7 +11,7 @@ interface ApiResponse<T = unknown> {
 }
 
 const api: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:3000",
+  baseURL: apiBaseUrl,
   timeout: 10000,
   withCredentials: true,
   headers: { "Content-Type": "application/json" },

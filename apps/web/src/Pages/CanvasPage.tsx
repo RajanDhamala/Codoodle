@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState } from "react";
 import { Eraser, ArrowLeft, ArrowRight } from "lucide-react";
-import { io } from "socket.io-client"
 import { v4 as uuidv4 } from 'uuid';
+import { createSocket } from "../Utils/socket";
 
 const CanvasPage = () => {
 
@@ -61,10 +61,7 @@ const CanvasPage = () => {
   }
 
   useEffect(() => {
-    const socketinstance = io("http://localhost:3000", {
-      transports: ["websocket", "polling"],
-      reconnectionAttempts: 3,
-    })
+    const socketinstance = createSocket()
     setisConnecting(true)
 
     socketinstance.on("connected", (data) => {

@@ -1,9 +1,7 @@
 import { io } from "socket.io-client";
+import { apiBaseUrl } from "./env";
 
-const socketBaseUrl = (
-  import.meta.env.VITE_API_URL ||
-  `${window.location.protocol}//${window.location.hostname}:3000`
-).replace(/\/$/, "");
+const socketBaseUrl = apiBaseUrl;
 
 const createSocket = () => {
   return io(socketBaseUrl, {

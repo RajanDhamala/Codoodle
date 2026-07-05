@@ -7,60 +7,52 @@ import {
 } from "./Utils/guestProfile";
 import type { User } from "./Pages/GameTypes";
 
-type UserAuthStatus = "bootstrapping" | "authenticated" | "guest" | "anonymous";
+type CurrentUser = User & {
+  avatarCode?: string;
+};
+
+type ProfileWithAvatarCode = GuestProfile & {
+  avatarCode?: string;
+};
 
 interface UserStore {
   guestProfile: GuestProfile | null;
-  currentUser: User | null;
-  authStatus: UserAuthStatus;
-  hasBootstrappedUser: boolean;
-  beginUserBootstrap: () => void;
-  completeUserBootstrap: (profile: GuestProfile | null) => void;
-  setGuestProfile: (profile: GuestProfile) => void;
+  currentUser: CurrentUser | null;
+  setGuestProfile: (profile: ProfileWithAvatarCode) => void;
   clearGuestProfile: () => void;
-  setCurrentUser: (user: User) => void;
+  setCurrentUser: (user: CurrentUser) => void;
   clearCurrentUser: () => void;
 }
 
-const profileToUser = (profile: GuestProfile): User => ({
+const profileToUser = (profile: ProfileWithAvatarCode): CurrentUser => ({
   id: profile.id,
   username: profile.username,
   avatar: profile.avatar,
+  ...(profile.avatarCode ? { avatarCode: profile.avatarCode } : {}),
 });
 
-const useUserStore = create<UserStore>((set) => ({
-  guestProfile: loadGuestProfile(),
-  currentUser: null,
-  authStatus: "bootstrapping",
-  hasBootstrappedUser: false,
-  beginUserBootstrap: () => {
-    set({ authStatus: "bootstrapping", hasBootstrappedUser: false });
-  },
-  completeUserBootstrap: (profile) => {
-    if (profile) {
-      saveGuestProfile(profile);
-      set({
-        guestProfile: profile,
-        currentUser: profileToUser(profile),
-        authStatus: "authenticated",
-        hasBootstrappedUser: true,
-      });
-      return;
-    }
+const stripAvatarCode = (profile: ProfileWithAvatarCode): GuestProfile => ({
+  schemaVersion: profile.schemaVersion,
+  id: profile.id,
+  username: profile.username,
+  avatar: profile.avatar,
+  createdAt: profile.createdAt,
+  updatedAt: profile.updatedAt,
+});
 
-    set((state) => ({
-      currentUser: null,
-      authStatus: state.guestProfile ? "guest" : "anonymous",
-      hasBootstrappedUser: true,
-    }));
-  },
+const initialGuestProfile = loadGuestProfile();
+
+const useUserStore = create<UserStore>((set) => ({
+  guestProfile: initialGuestProfile,
+  currentUser: initialGuestProfile ? profileToUser(initialGuestProfile) : null,
   setGuestProfile: (profile) => {
-    saveGuestProfile(profile);
-    set({ guestProfile: profile, authStatus: "guest" });
+    const guestProfile = stripAvatarCode(profile);
+    saveGuestProfile(guestProfile);
+    set({ guestProfile, currentUser: profileToUser(profile) });
   },
   clearGuestProfile: () => {
     clearGuestProfile();
-    set({ guestProfile: null, currentUser: null, authStatus: "anonymous" });
+    set({ guestProfile: null, currentUser: null });
   },
   setCurrentUser: (user) => set({ currentUser: user }),
   clearCurrentUser: () => set({ currentUser: null }),

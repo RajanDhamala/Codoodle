@@ -19,18 +19,29 @@ type ServerUser = {
   avatar?: unknown;
 };
 
+type CurrentUserProfile = GuestProfile & {
+  avatarCode?: string;
+};
+
 type MeResponse = ServerUser & {
   user?: ServerUser;
   data?: ServerUser;
 };
 
-const normalizeServerUser = (payload: MeResponse): GuestProfile | null => {
-  const existingProfile = useUserStore.getState().guestProfile;
-  if (!existingProfile) return null;
+const getAvatarCode = (avatar: unknown) => {
+  if (typeof avatar !== "string") return undefined;
+  const avatarCode = avatar.trim();
+  return avatarCode.length > 0 ? avatarCode : undefined;
+};
 
+const normalizeServerUser = (
+  payload: MeResponse,
+  existingProfile: GuestProfile
+): CurrentUserProfile | null => {
   const user = payload.user || payload.data || payload;
   const id = user.userId ?? user.id;
   const username = (user.username || user.name || "").trim();
+  const avatarCode = getAvatarCode(user.avatar);
 
   if (!id || !username) return null;
 
@@ -41,6 +52,7 @@ const normalizeServerUser = (payload: MeResponse): GuestProfile | null => {
     id: String(id),
     username,
     avatar: sanitizeAvatarConfig(user.avatar),
+    ...(avatarCode ? { avatarCode } : {}),
     createdAt: existingProfile?.id === String(id) ? existingProfile.createdAt : now,
     updatedAt: now,
   };
@@ -62,45 +74,39 @@ const RequireGameRoomProfile = ({ children }: { children: ReactNode }) => {
 };
 
 function App() {
-  const beginUserBootstrap = useUserStore((state) => state.beginUserBootstrap);
-  const completeUserBootstrap = useUserStore((state) => state.completeUserBootstrap);
-  const hasBootstrappedUser = useUserStore((state) => state.hasBootstrappedUser);
+  const guestProfileId = useUserStore((state) => state.guestProfile?.id);
+  const setGuestProfile = useUserStore((state) => state.setGuestProfile);
 
   useEffect(() => {
+    if (!guestProfileId) return;
+
     const controller = new AbortController();
     let isActive = true;
 
-    beginUserBootstrap();
-
-    const bootstrapUser = async () => {
+    const syncCurrentUser = async () => {
       try {
+        const existingProfile = useUserStore.getState().guestProfile;
+        if (!existingProfile) return;
+
         const payload = (await api.get("/user/me", {
           signal: controller.signal,
         })) as unknown as MeResponse;
 
         if (!isActive) return;
-        completeUserBootstrap(normalizeServerUser(payload));
+        const profile = normalizeServerUser(payload, existingProfile);
+        if (profile) setGuestProfile(profile);
       } catch {
-        if (!isActive || controller.signal.aborted) return;
-        completeUserBootstrap(null);
+        return;
       }
     };
 
-    void bootstrapUser();
+    void syncCurrentUser();
 
     return () => {
       isActive = false;
       controller.abort();
     };
-  }, [beginUserBootstrap, completeUserBootstrap]);
-
-  if (!hasBootstrappedUser) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader />
-      </div>
-    );
-  }
+  }, [guestProfileId, setGuestProfile]);
 
   return (
     <QueryClientProvider client={queryClient}>
