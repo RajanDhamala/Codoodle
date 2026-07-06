@@ -9,12 +9,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } fr
 import type React from "react";
 import useSocketStore from "../SocketStore";
 import useUserStore from "../UserStore";
-import { socketBaseUrl } from "../Utils/socket";
 import { AvatarBadge } from "./GameAvatar";
 import { encodeAvatarConfig } from "../Utils/guestProfile";
 import {
   defaultGameSettings,
-  type ConnectionStatus,
   type GameResult,
   type GameSettings,
   type RoleInfo,
@@ -52,7 +50,7 @@ type Stroke = {
   final: Points | null,
   color: string | null,
   width: number | null,
-  id?: Number | string | null,
+  id?: number | string | null,
   userId?: string | null,
   username?: string | null,
   playerId?: string | null,
@@ -76,16 +74,22 @@ type RoomMember = {
   isAdmin?: boolean;
 };
 
+type RoomSettingsPayload = Partial<GameSettings> & {
+  owner?: RoomMember;
+  turnDurationSeconds?: number;
+  maxStrokesPerTurn?: number;
+};
+
 type RoomSyncPayload = {
   success?: boolean;
   message?: string;
   roomId?: string;
   phase?: "lobby" | "drawing" | "voting" | "results";
   members?: RoomMember[];
-  settings?: any;
+  settings?: RoomSettingsPayload;
   owner?: RoomMember;
-  gameState?: any[];
-  activeStroke?: any;
+  gameState?: unknown[];
+  activeStroke?: unknown;
   roleInfo?: RoleInfo;
   players?: RoomMember[];
   connectedPlayerCount?: number;
@@ -113,17 +117,75 @@ type ChatMessageView = {
   avatarCode?: string;
 };
 
+type RoomLifecyclePayload = {
+  roomId?: string;
+  message?: string;
+};
+
+type GroupMessagePayload = {
+  user: {
+    username?: string;
+    avatarCode?: string;
+  };
+  message?: string;
+};
+
+type RoomMembersPayload = {
+  roomId?: string;
+  members?: RoomMember[];
+  owner?: RoomMember;
+};
+
+type StrokeStartPayload = {
+  color: string;
+  width: number;
+  inital: Points;
+  kind: StrokeKind;
+};
+
+type RemoteStreamPayload<T> = {
+  userId?: string | null;
+  username?: string | null;
+  data: {
+    id?: string | number | null;
+    uuid?: string;
+    userId?: string | null;
+    username?: string | null;
+    data: T;
+  };
+};
+
+type ServerStrokeRecord = {
+  kind?: StrokeKind;
+  initial?: unknown;
+  intermediate?: unknown[];
+  final?: unknown;
+  color?: string | null;
+  width?: number | string | null;
+  size?: number | string | null;
+  id?: string | number | null;
+  userId?: string | null;
+  username?: string | null;
+  playerId?: string | null;
+  playerName?: string | null;
+  user?: {
+    id?: string | null;
+    username?: string | null;
+  };
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+  return typeof value === "object" && value !== null;
+};
+
 const GameRoom = () => {
   const nagivate = useNavigate();
 
   const guestProfile = useUserStore((state) => state.guestProfile);
   const currentUser = useUserStore((state) => state.currentUser);
-  const clearGuestProfile = useUserStore((state) => state.clearGuestProfile);
-  const clearCurrentUser = useUserStore((state) => state.clearCurrentUser);
   const socketInstance = useSocketStore((state) => state.socketInstance);
   const setSocketInstance = useSocketStore((state) => state.setSocketInstance)
-  const clearSocketInstance = useSocketStore((state) => state.clearSocketInstance);
-  const { setSettings, setRoomId, clearRoom, Settings, RoomId } = useRoomStore()
+  const { setSettings, setRoomId, clearRoom, RoomId } = useRoomStore()
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -138,15 +200,8 @@ const GameRoom = () => {
     };
   }, [currentUser, guestProfile]);
 
-  const ScrollMessageWindow = () => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: "end" });
-  }
 
-
-
-  const [room, setRoom] = useState<any>(null);
-  const [joinCode, setJoinCode] = useState("");
-  const [settingsDraft, setSettingsDraft] = useState<GameSettings>(defaultGameSettings);
+  const [room, setRoom] = useState<RoomSyncPayload | null>(null);
   const [activeTool, setActiveTool] = useState<StrokeKind>("path");
   const [strokeColor, setStrokeColor] = useState("#111827");
   const [strokeSize, setStrokeSize] = useState(7);
@@ -154,14 +209,15 @@ const GameRoom = () => {
   const [Msg, setMsg] = useState<string>("")
   const [members, setMember] = useState<RoomMember[]>([])
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const latestGameStateRef = useRef<any[]>([])
-  const latestActiveStrokeRef = useRef<any>(null)
+  const latestGameStateRef = useRef<unknown[]>([])
+  const latestActiveStrokeRef = useRef<unknown>(null)
   const [admin, setAdmin] = useState<RoomMember | null>(null)
   const [roleInfo, setRoleInfo] = useState<RoleInfo | null>(null)
   const [turnDurationSeconds, setTurnDurationSeconds] = useState(30)
   const [maxStrokesPerTurn, setMaxStrokesPerTurn] = useState(defaultGameSettings.maxStrokesPerTurn)
   const [now, setNow] = useState(Date.now())
   const lastJoinedRoomKeyRef = useRef("")
+  const leavingRoomIdRef = useRef<string | null>(null)
 
   const url = useParams()
   const roomRef = useRef("")
@@ -195,6 +251,7 @@ const GameRoom = () => {
       nagivate("/lobby")
       return
     }
+    leavingRoomIdRef.current = RoomId
     socketInstance?.emit("leave-group", { id: RoomId })
     toast.success("room left successfully!")
     setRoom(null)
@@ -222,7 +279,6 @@ const GameRoom = () => {
       return
     }
     socketInstance?.emit("send-group-message", { id: RoomId, message: trimmed })
-    toast.success("message sent successfully!")
     setChatHistry((prev) => {
       return [
         ...prev,
@@ -234,7 +290,6 @@ const GameRoom = () => {
     })
     setMsg("")
     setTimeout(() => {
-      // ScrollMessageWindow()
     }, 500)
   }
 
@@ -269,8 +324,13 @@ const GameRoom = () => {
   }
 
   const applyRoomSync = (data: RoomSyncPayload) => {
-    setRoomId(data.roomId || roomRef.current)
-    setRoom(data as any)
+    const nextRoomId = data.roomId || roomRef.current
+    if (leavingRoomIdRef.current === nextRoomId) {
+      return
+    }
+
+    setRoomId(nextRoomId)
+    setRoom(data)
     setSettings(data.settings)
     applyMembersSnapshot(data.members || [], data.owner || data.settings?.owner)
     if (data.roleInfo) {
@@ -360,6 +420,9 @@ const GameRoom = () => {
     if (!socketInstance?.connected) {
       return;
     }
+    if (leavingRoomIdRef.current === normalizedCode) {
+      return;
+    }
 
     const joinKey = `${socketInstance.id || "connected"}:${normalizedCode}`
     if (lastJoinedRoomKeyRef.current === joinKey) {
@@ -367,14 +430,15 @@ const GameRoom = () => {
     }
 
     lastJoinedRoomKeyRef.current = joinKey;
-    console.log("ready to join?", normalizedCode)
-    setJoinCode(normalizedCode);
     socketInstance?.emit("join-group", {
       id: normalizedCode,
       roomId: normalizedCode,
       currentUser: socketUserPayload,
       reconnect: Boolean(options.reconnect),
     }, (data: RoomSyncPayload) => {
+      if (leavingRoomIdRef.current === normalizedCode) {
+        return;
+      }
       if (!data?.success) {
         clearSyncedRoom()
         toast.error(data?.message || "Room not found or expired.");
@@ -386,6 +450,8 @@ const GameRoom = () => {
         toast.success(data.message || "Joined room successfully");
       }
     });
+  // The room join callback uses ref-backed room state; adding render-local helpers here causes repeated join attempts.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeUser, socketInstance, socketUserPayload]);
 
   useEffect(() => {
@@ -404,8 +470,10 @@ const GameRoom = () => {
     const syncCurrentRoom = (reconnect = false) => {
       const roomCode = roomRef.current
       if (!isValidUuid(roomCode)) {
-        console.log("Invalid UUID");
         toast.error("invlaid uuid")
+        return;
+      }
+      if (leavingRoomIdRef.current === roomCode) {
         return;
       }
 
@@ -424,6 +492,9 @@ const GameRoom = () => {
     }
 
     const handleMembersUpdated = (data: RoomSyncPayload) => {
+      if (leavingRoomIdRef.current === (data.roomId || roomRef.current)) {
+        return
+      }
       applyMembersSnapshot(data.members || [], data.owner)
     }
 
@@ -443,8 +514,30 @@ const GameRoom = () => {
       toast.error(data.message || "You cannot draw right now.")
     }
 
-    const handleGroupMessage = (data) => {
-      console.log("message recived:", data);
+    const leaveClosedRoom = (data: RoomLifecyclePayload, fallbackMessage: string) => {
+      const eventRoomId = data.roomId || roomRef.current
+      if (eventRoomId && eventRoomId !== roomRef.current && eventRoomId !== RoomId) {
+        return
+      }
+
+      leavingRoomIdRef.current = eventRoomId || roomRef.current
+      if (eventRoomId && isValidUuid(eventRoomId)) {
+        socketInstance.emit("leave-group", { id: eventRoomId })
+      }
+      clearSyncedRoom()
+      toast.error(data.message || fallbackMessage)
+      nagivate("/lobby")
+    }
+
+    const handleRoomClosed = (data: RoomLifecyclePayload = {}) => {
+      leaveClosedRoom(data, "Room closed.")
+    }
+
+    const handleRoomOwnerDisconnected = (data: RoomLifecyclePayload = {}) => {
+      leaveClosedRoom(data, "Admin disconnected. Returning to lobby.")
+    }
+
+    const handleGroupMessage = (data: GroupMessagePayload) => {
       setChatHistry((prev) => {
         return [
           ...prev, {
@@ -457,16 +550,17 @@ const GameRoom = () => {
       })
     }
 
-    const handleNewUserJoined = (data) => {
-      console.log("joined gorup data:", data.user)
+    const handleNewUserJoined = (data: RoomMembersPayload) => {
+      if (leavingRoomIdRef.current === (data.roomId || roomRef.current)) {
+        return
+      }
       if (data.members) {
         applyMembersSnapshot(data.members, data.owner)
       }
     }
 
 
-    const handleStartStream = (data: any) => {
-      console.log("some one started drawing")
+    const handleStartStream = (data: RemoteStreamPayload<StrokeStartPayload>) => {
       if (!isOpponentDrawing.current) {
         isOpponentDrawing.current = true
       }
@@ -491,11 +585,9 @@ const GameRoom = () => {
       }
       ctx.strokeStyle = data.data.data.color
       ctx.lineWidth = data.data.data.width
-      console.log("drawing has been started btw whoa re u", data)
     }
 
-    const handleSendStream = (data: any) => {
-      console.log("some one is drawing", data)
+    const handleSendStream = (data: RemoteStreamPayload<Points[]>) => {
       const canvas = canvasRef.current
       if (!canvas) return
       const ctx = canvas.getContext("2d")
@@ -507,7 +599,7 @@ const GameRoom = () => {
       ctx.strokeStyle = currentStroke.color ?? "black"
       ctx.lineWidth = currentStroke.width ?? 5
       ctx.lineCap = "round"
-      data.data.data.forEach((res: any) => {
+      data.data.data.forEach((res) => {
         const lastPoint = getLastStrokePoint(currentStroke)
         if (!lastPoint) return
         if (!isShapeTool(currentStroke.kind)) {
@@ -517,8 +609,7 @@ const GameRoom = () => {
       })
     }
 
-    const handleEndStream = (data: any) => {
-      console.log("some one ended drawing", data)
+    const handleEndStream = (data: RemoteStreamPayload<Points>) => {
       const pos = data.data.data
       const canvas = canvasRef.current
       if (!canvas) return
@@ -538,7 +629,6 @@ const GameRoom = () => {
         }
       }
       addStrokeToHistory(currentStroke)
-      console.log("stroke index:", pointerIndexRef.current)
       delete remoteStrokeMapRef.current[streamId]
       isOpponentDrawing.current = Object.keys(remoteStrokeMapRef.current).length > 0
     }
@@ -551,6 +641,8 @@ const GameRoom = () => {
     socketInstance.on("room-state-updated", handleRoomStateUpdated)
     socketInstance.on("role-info", handleRoleInfo)
     socketInstance.on("draw-blocked", handleDrawBlocked)
+    socketInstance.on("room-closed", handleRoomClosed)
+    socketInstance.on("room-owner-disconnected", handleRoomOwnerDisconnected)
     socketInstance.on("recieve-start-stream", handleStartStream)
     socketInstance.on("recieve-send-stream", handleSendStream)
     socketInstance.on("recieve-end-stream", handleEndStream)
@@ -568,49 +660,58 @@ const GameRoom = () => {
       socketInstance.off("room-state-updated", handleRoomStateUpdated)
       socketInstance.off("role-info", handleRoleInfo)
       socketInstance.off("draw-blocked", handleDrawBlocked)
+      socketInstance.off("room-closed", handleRoomClosed)
+      socketInstance.off("room-owner-disconnected", handleRoomOwnerDisconnected)
       socketInstance.off("recieve-start-stream", handleStartStream)
       socketInstance.off("recieve-send-stream", handleSendStream)
       socketInstance.off("recieve-end-stream", handleEndStream)
 
 
     }
+  // Socket handlers read ref-backed canvas/room state; resubscribing on every drawing helper change drops active streams.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [RoomId, isRoomIdValid, joinRoom, socketInstance])
 
 
-  const normalizePoint = (point: any): Points | null => {
-    if (!point || typeof point.x !== "number" || typeof point.y !== "number") {
+  const normalizePoint = (point: unknown): Points | null => {
+    if (!isRecord(point) || typeof point.x !== "number" || typeof point.y !== "number") {
       return null
     }
 
     return { x: point.x, y: point.y }
   }
 
-  const normalizeStrokeFromServer = (item: any, requireFinal = true): Stroke | null => {
-    const initial = normalizePoint(item?.initial)
-    const final = normalizePoint(item?.final)
+  const normalizeStrokeFromServer = (item: unknown, requireFinal = true): Stroke | null => {
+    if (!isRecord(item)) {
+      return null
+    }
+
+    const record = item as ServerStrokeRecord
+    const initial = normalizePoint(record.initial)
+    const final = normalizePoint(record.final)
 
     if (!initial || (requireFinal && !final)) {
       return null
     }
 
     return {
-      kind: item.kind ?? "path",
+      kind: record.kind ?? "path",
       initial,
-      intermediate: Array.isArray(item.intermediate)
-        ? item.intermediate.map(normalizePoint).filter(Boolean) as Points[]
+      intermediate: Array.isArray(record.intermediate)
+        ? record.intermediate.map(normalizePoint).filter(Boolean) as Points[]
         : [],
       final,
-      color: item.color ?? "black",
-      width: Number(item.width ?? item.size ?? 5),
-      id: item.id ?? null,
-      userId: item.userId ?? item.playerId ?? item.user?.id ?? null,
-      username: item.username ?? item.playerName ?? item.user?.username ?? null,
-      playerId: item.playerId ?? null,
-      playerName: item.playerName ?? null,
+      color: record.color ?? "black",
+      width: Number(record.width ?? record.size ?? 5),
+      id: record.id ?? null,
+      userId: record.userId ?? record.playerId ?? record.user?.id ?? null,
+      username: record.username ?? record.playerName ?? record.user?.username ?? null,
+      playerId: record.playerId ?? null,
+      playerName: record.playerName ?? null,
     }
   }
 
-  const DrawGameState = (data: any) => {
+  const DrawGameState = (data: unknown) => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext("2d")
@@ -643,7 +744,7 @@ const GameRoom = () => {
     ctx.globalCompositeOperation = "source-over"
   }
 
-  const drawActiveStroke = (data: any) => {
+  const drawActiveStroke = (data: unknown) => {
     const activeStroke = normalizeStrokeFromServer(data, false)
     if (!activeStroke?.initial || !activeStroke.id) {
       return
@@ -679,8 +780,7 @@ const GameRoom = () => {
 
   const isUDrawing = useRef(false)
   const isOpponentDrawing = useRef(false)
-  const [bgColor, setbgColor] = useState("white")
-  // const [strokeSize, setstrokeSize] = useState(5)
+  const bgColor = "white"
 
   const localStrokeRef = useRef<Stroke>({
     initial: null,
@@ -699,12 +799,8 @@ const GameRoom = () => {
   const [selectedStrokeInfo, setSelectedStrokeInfo] = useState<StrokeSelection | null>(null)
   const remoteStrokeMapRef = useRef<Record<string, Stroke>>({})
   const draftSnapshotRef = useRef<ImageData | null>(null)
-  const dummyColor = ["red", "blue", "green", "yellow", "brown", "purple", "pink", "black"]
-  const [isConnecting, setisConnecting] = useState<Boolean>(false)
-  const [isConnected, setisConnected] = useState<Boolean>(false)
   const localColorRef = useRef<string>("#111827")
   const localWidthRef = useRef<number>(7)
-  const [socket, setSocket] = useState<any>()
 
   const addStrokeToHistory = (stroke: Stroke) => {
     pointerIndexRef.current = historyLengthRef.current
@@ -770,7 +866,7 @@ const GameRoom = () => {
     isActiveRef.current = false
   }
 
-  const Thottler = (data: any) => {
+  const Thottler = (data: Stroke) => {
     if (isActiveRef.current) {
       return
     }
@@ -794,7 +890,7 @@ const GameRoom = () => {
     }, 300)
   }
 
-  const StartEventStream = (data) => {
+  const StartEventStream = (data: StrokeStartPayload) => {
     if (!RoomId || !isValidUuid(RoomId)) {
       return
     }
@@ -802,7 +898,7 @@ const GameRoom = () => {
     activeIdref.current = uuid
     socketInstance?.emit("start-stream", { data, uuid, "roomId": RoomId })
   }
-  const SendEventStream = (data: any) => {
+  const SendEventStream = (data: Points[]) => {
     if (isBlockedref.current) {
       return
     }
@@ -813,8 +909,8 @@ const GameRoom = () => {
     console.log("event stream sent")
   }
 
-  const EndEventStream = (data: any) => {
-    data = localStrokeRef.current
+  const EndEventStream = () => {
+    const data = localStrokeRef.current
     clearThrottleTimer()
 
     const arrayLength = data.intermediate.length
@@ -1126,13 +1222,7 @@ const GameRoom = () => {
     }
     addStrokeToHistory(finishedStroke)
     // EmitStroker(currentStroke)
-    const data = {
-      final: localStrokeRef.current.final,
-      color: localStrokeRef.current.color,
-      width: localStrokeRef.current.width,
-      kind: localStrokeRef.current.kind,
-    }
-    EndEventStream(data)
+    EndEventStream()
     localStrokeRef.current = {
       initial: null,
       intermediate: [],
@@ -1286,25 +1376,7 @@ const GameRoom = () => {
     };
   };
 
-
-  const HandelRedo = () => {
-    setSelectedStrokeInfo(null)
-    console.log("redoing stroke")
-
-    const currentIndex = Math.min(pointerIndexRef.current, Histry.length - 1)
-    console.log("inital strokeIndex before redo:", currentIndex)
-    if (currentIndex >= Histry.length - 1) {
-      console.log("no histry to redo")
-      return
-    }
-
-    const nextIndex = currentIndex + 1
-    pointerIndexRef.current = nextIndex
-    redrawHistoryUntil(nextIndex)
-    console.log("final strokeIndex after redo:", nextIndex)
-  }
-
-  const getRemoteStreamId = (data: any) => {
+  const getRemoteStreamId = (data: RemoteStreamPayload<unknown>) => {
     return String(data.data.uuid ?? data.data.id ?? "remote")
   }
 
@@ -1362,6 +1434,8 @@ const GameRoom = () => {
 
     DrawGameState(latestGameStateRef.current)
     drawActiveStroke(latestActiveStrokeRef.current)
+  // Redraws are keyed to game progress; draw helpers are stable for this render path but not memoized.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasStarted, room?.currentPlayerId, room?.submittedTurns])
 
   useEffect(() => {
@@ -1468,12 +1542,10 @@ const GameRoom = () => {
         <section className="min-w-0 space-y-4">
           {!hasStarted && !isVotingPhase && !isResultPhase ? (
             <WaitingForAdminStart
-              roomId={RoomId}
               adminName={visibleAdmin?.username}
               connectedMembersCount={connectedMembersCount}
               turnDurationSeconds={turnDurationSeconds}
               maxStrokesPerTurn={maxStrokesPerTurn}
-              onCopyRoom={CopyRoomCode}
             />
           ) : null}
 
@@ -1859,19 +1931,15 @@ const Panel = ({
 );
 
 const WaitingForAdminStart = ({
-  roomId,
   adminName,
   connectedMembersCount,
   turnDurationSeconds,
   maxStrokesPerTurn,
-  onCopyRoom,
 }: {
-  roomId: string | null;
   adminName?: string;
   connectedMembersCount: number;
   turnDurationSeconds: number;
   maxStrokesPerTurn: number;
-  onCopyRoom: () => void;
 }) => {
   const neededPlayers = Math.max(0, 3 - connectedMembersCount);
   const readyPercent = Math.min(100, Math.round((connectedMembersCount / 3) * 100));
@@ -2721,81 +2789,5 @@ const ResultCelebrationSvg = ({ artistsWin }: { artistsWin: boolean }) => {
     </svg>
   )
 }
-
-const SettingsControls = ({
-  settings,
-  setSettings,
-  disabled,
-}: {
-  settings: GameSettings;
-  setSettings: React.Dispatch<React.SetStateAction<GameSettings>>;
-  disabled: boolean;
-}) => (
-  <div className="mt-4 space-y-4">
-    <label className="block">
-      <span className="text-sm text-zinc-400">Max players</span>
-      <input
-        type="number"
-        min={3}
-        max={10}
-        value={settings.maxPlayers}
-        disabled={disabled}
-        onChange={(event) =>
-          setSettings((previous) => ({
-            ...previous,
-            maxPlayers: Number(event.target.value),
-          }))
-        }
-        className="mt-1 w-full rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-sm outline-none ring-sky-400/40 transition focus:ring-4 disabled:opacity-50"
-      />
-    </label>
-    <label className="block">
-      <span className="text-sm text-zinc-400">Turn cycles before voting</span>
-      <input
-        type="number"
-        min={1}
-        max={5}
-        value={settings.turnCyclesBeforeVote}
-        disabled={disabled}
-        onChange={(event) =>
-          setSettings((previous) => ({
-            ...previous,
-            turnCyclesBeforeVote: Number(event.target.value),
-          }))
-        }
-        className="mt-1 w-full rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-sm outline-none ring-sky-400/40 transition focus:ring-4 disabled:opacity-50"
-      />
-    </label>
-    <label className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm">
-      <span>Allow draft undo</span>
-      <input
-        type="checkbox"
-        checked={settings.allowUndo}
-        disabled={disabled}
-        onChange={(event) =>
-          setSettings((previous) => ({
-            ...previous,
-            allowUndo: event.target.checked,
-          }))
-        }
-      />
-    </label>
-    <label className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm">
-      <span>Allow kick in lobby</span>
-      <input
-        type="checkbox"
-        checked={settings.allowKick}
-        disabled={disabled}
-        onChange={(event) =>
-          setSettings((previous) => ({
-            ...previous,
-            allowKick: event.target.checked,
-          }))
-        }
-      />
-    </label>
-  </div>
-);
-
 
 export default GameRoom;

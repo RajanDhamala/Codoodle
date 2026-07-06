@@ -4,10 +4,8 @@ import { InitWs } from "./Utils/InitWs.js"
 import http from "http"
 import cors from "cors"
 import dotenv from "dotenv"
-import GameRouter from "./Routes/GameRouter.js"
 import UserRouter from "./Routes/UserRouter.js"
 import cookieParser from "cookie-parser";
-import { HandelOauthCallback } from "./Controllers/UserController.js"
 import { getAllowedOrigins, getOptionalEnv, getOptionalIntEnv, getRequiredIntEnv } from "./Utils/env.js"
 
 dotenv.config()
@@ -17,6 +15,14 @@ const allowedOrigins = getAllowedOrigins();
 const port = getRequiredIntEnv("PORT");
 const httpJsonLimit = getOptionalEnv("HTTP_JSON_LIMIT", "32kb");
 const socketMaxPayloadBytes = getOptionalIntEnv("WS_MAX_PAYLOAD_BYTES", 20000);
+
+app.disable("x-powered-by");
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("X-Frame-Options", "DENY");
+  next();
+});
 
 app.use(cors({
   origin(origin, callback) {
@@ -50,8 +56,6 @@ const io = new Server(server, {
 })
 
 app.use("/user", UserRouter)
-app.use("/game", GameRouter)
-app.get("/oauth/callback", HandelOauthCallback)
 
 await InitWs(io)
 try {

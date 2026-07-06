@@ -1,6 +1,6 @@
 import { Suspense, type ReactNode, useEffect } from "react";
 import "./index.css";
-import { LazyTestPage, LazyLobbyPage, GameRoomPage } from "./LazyLoading/LazyLoading";
+import { LazyLobbyPage, GameRoomPage, LazyPageNotFound } from "./LazyLoading/LazyLoading";
 import { BrowserRouter as Router, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import queryClient from "./Utils/QueryConfig.tsx";
@@ -9,7 +9,6 @@ import { Toaster } from "react-hot-toast";
 import useUserStore from "./UserStore.tsx";
 import api from "./Utils/AxiosWrapper.ts";
 import { sanitizeAvatarConfig, type GuestProfile } from "./Utils/guestProfile.ts";
-import CanvasPage from "./Pages/CanvasPage.tsx"
 
 type ServerUser = {
   id?: string | number;
@@ -115,7 +114,6 @@ function App() {
         <Suspense fallback={<Loader />}>
           <Routes>
             <Route path="/" element={<LazyLobbyPage />} />
-            <Route path="/test" element={<LazyTestPage />} />
             <Route path="/lobby" element={<LazyLobbyPage />} />
 
             <Route
@@ -126,8 +124,7 @@ function App() {
                 </RequireGameRoomProfile>
               }
             />
-            <Route path="/canvas" element={<CanvasPage />} />
-            <Route path="*" element={<div className="p-10 text-center text-red-500 font-bold">404 | Page Not Found</div>} />
+            <Route path="*" element={<LazyPageNotFound />} />
           </Routes>
         </Suspense>
       </Router>

@@ -31,6 +31,19 @@ jobs:
         run: pnpm build
         shell: bash
         working-directory: apps/web
+        env:
+          VITE_API_URL: /api
+
+      - name: Copy files to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          password: ${{ secrets.PASSWORD }}
+          port: ${{ secrets.PORT }}
+          source: "dist/*"
+          target: "/var/www/Coloodle/"
+          strip_components: 1
 
   api:
     name: api
@@ -94,5 +107,4 @@ jobs:
           port: ${{ secrets.PORT }}
           script: |
             whoami
-            docker pull ${{env.IMAGE_NAME}}:${{github.sha}}
-            docker stop ${{env.CONTAINER_NAME}} 2>/dev/null || true
+            pwd

@@ -1,7 +1,7 @@
 import jwt from "jsonwebtoken";
 import { v4 as uuidv4, validate as isValidUuid } from "uuid";
 import cookie from "cookie";
-import { getOptionalIntEnv } from "./env.js";
+import { getOptionalIntEnv, getRequiredEnv } from "./env.js";
 let socketInstance;
 
 const ActiveUser = new Map();
@@ -9,7 +9,14 @@ const Rooms = new Map();
 const GameState = new Map()
 const ActiveStrokes = new Map();
 const EMPTY_ROOM_CLEANUP_MS = 30000;
+const DEFAULT_HOST_DISCONNECT_GRACE_MS = 30000;
 const MIN_PLAYERS_TO_START = 3;
+const DEFAULT_MAX_PLAYERS = 6;
+const MIN_MAX_PLAYERS = 3;
+const MAX_MAX_PLAYERS = 10;
+const DEFAULT_TURN_CYCLES_BEFORE_VOTE = 3;
+const MIN_TURN_CYCLES_BEFORE_VOTE = 1;
+const MAX_TURN_CYCLES_BEFORE_VOTE = 5;
 const DEFAULT_TURN_DURATION_SECONDS = 30;
 const MIN_TURN_DURATION_SECONDS = 5;
 const MAX_TURN_DURATION_SECONDS = 120;
@@ -43,16 +50,14 @@ const normalizeAvatarCode = (user = {}) => {
   return null;
 };
 
-const normalizeUser = (socket, user = {}) => {
-  const socketUser = ActiveUser.get(socket.id) || {};
-  const id = user.id || socketUser.id || socket.id;
-  const username = user.username || socketUser.username || "Player";
-  const avatarCode = normalizeAvatarCode(user) || normalizeAvatarCode(socketUser);
+const normalizeUser = (socket) => {
+  const socketUser = ActiveUser.get(socket.id);
+  if (!socketUser?.id) return null;
 
   return {
-    id,
-    username,
-    ...(avatarCode ? { avatarCode } : {}),
+    id: socketUser.id,
+    username: socketUser.username,
+    ...(socketUser.avatarCode ? { avatarCode: socketUser.avatarCode } : {}),
   };
 };
 
@@ -80,9 +85,31 @@ const clampMaxStrokesPerTurn = (value) => {
   );
 };
 
+const clampMaxPlayers = (value) => {
+  const normalized = Number(value);
+  if (!Number.isFinite(normalized)) return DEFAULT_MAX_PLAYERS;
+
+  return Math.min(
+    MAX_MAX_PLAYERS,
+    Math.max(MIN_MAX_PLAYERS, Math.round(normalized))
+  );
+};
+
+const clampTurnCyclesBeforeVote = (value) => {
+  const normalized = Number(value);
+  if (!Number.isFinite(normalized)) return DEFAULT_TURN_CYCLES_BEFORE_VOTE;
+
+  return Math.min(
+    MAX_TURN_CYCLES_BEFORE_VOTE,
+    Math.max(MIN_TURN_CYCLES_BEFORE_VOTE, Math.round(normalized))
+  );
+};
+
 const normalizeRoomSettings = (settings = {}) => {
   return {
     ...settings,
+    maxPlayers: clampMaxPlayers(settings.maxPlayers),
+    turnCyclesBeforeVote: clampTurnCyclesBeforeVote(settings.turnCyclesBeforeVote),
     maxStrokesPerTurn: clampMaxStrokesPerTurn(settings.maxStrokesPerTurn),
   };
 };
@@ -107,6 +134,7 @@ const InitWs = async (io) => {
     maxEventsPerWindow: getOptionalIntEnv("WS_MAX_EVENTS_PER_WINDOW", 80),
     maxChatMessageLength: getOptionalIntEnv("WS_MAX_CHAT_MESSAGE_LENGTH", 280),
     maxPointsPerSend: getOptionalIntEnv("WS_MAX_POINTS_PER_SEND", 32),
+    hostDisconnectGraceMs: getOptionalIntEnv("WS_HOST_DISCONNECT_GRACE_MS", DEFAULT_HOST_DISCONNECT_GRACE_MS),
   };
 
   const emitWsError = (socket, message) => {
@@ -220,21 +248,27 @@ const InitWs = async (io) => {
   io.use((socket, next) => {
     const data = cookie.parse(socket.handshake.headers.cookie || "");
     const token = data.info;
-    console.log("token:", token);
+
     if (!token) {
-      return next();
+      return next(new Error("Unauthorized"));
     }
 
     try {
-      const decoded = jwt.verify(token, process.env.INFO_SECRET);
+      const decoded = jwt.verify(token, getRequiredEnv("INFO_SECRET"));
+      const id = String(decoded.id || "").trim();
+      const username = String(decoded.username || "").trim();
+
+      if (!id || !username) {
+        return next(new Error("Unauthorized"));
+      }
+
       ActiveUser.set(socket.id, {
-        id: decoded.id,
-        username: decoded.username,
+        id,
+        username,
         avatarCode: normalizeAvatarCode(decoded),
       });
-      console.log("avtar code:", decoded.avatar)
     } catch (err) {
-      console.error("Socket handshake error:", err);
+      console.error("Socket handshake error");
       return next(new Error("Unauthorized"));
     }
     return next();
@@ -254,10 +288,19 @@ const InitWs = async (io) => {
     if (room?.resultTimer) {
       clearTimeout(room.resultTimer);
     }
+    if (room?.ownerCleanupTimer) {
+      clearTimeout(room.ownerCleanupTimer);
+    }
 
     Rooms.delete(roomId);
     GameState.delete(roomId);
     ActiveStrokes.delete(roomId);
+  };
+
+  const closeRoom = (roomId, message = "Room closed.") => {
+    io.to(roomId).emit("room-closed", { roomId, message });
+    io.in(roomId).socketsLeave(roomId);
+    clearRoom(roomId);
   };
 
   const getConnectedMemberCount = (room) => {
@@ -314,6 +357,10 @@ const InitWs = async (io) => {
   const isPlayerConnected = (room, playerId) => {
     const member = room.members.get(playerId);
     return Boolean(member && member.socketIds.size > 0);
+  };
+
+  const isRoomMember = (room, userId) => {
+    return Boolean(room?.members?.has(userId));
   };
 
   const findNextConnectedTurnIndex = (room, startIndex) => {
@@ -616,6 +663,7 @@ const InitWs = async (io) => {
 
     if (!user) return "Join the room before drawing.";
     if (!room) return "Room not found or expired.";
+    if (!isRoomMember(room, user.id)) return "Join the room before drawing.";
     if (room.phase !== "drawing") return "Waiting for admin to start.";
     if (room.currentPlayerId !== user?.id) return "Wait for your turn.";
     if (options.startingStroke) {
@@ -633,6 +681,7 @@ const InitWs = async (io) => {
 
     if (!user) return "Join the room before submitting.";
     if (!room) return "Room not found or expired.";
+    if (!isRoomMember(room, user.id)) return "Join the room before submitting.";
     if (room.phase !== "drawing") return "Waiting for admin to start.";
     if (room.currentPlayerId !== user?.id) return "Wait for your turn.";
     if (ActiveStrokes.has(roomId)) return "Finish the active stroke first.";
@@ -668,7 +717,6 @@ const InitWs = async (io) => {
       const currentRoom = Rooms.get(roomId);
       if (!currentRoom || getConnectedMemberCount(currentRoom) > 0) return;
 
-      console.log("clearing empty room:", roomId);
       clearRoom(roomId);
     }, EMPTY_ROOM_CLEANUP_MS);
   };
@@ -681,11 +729,41 @@ const InitWs = async (io) => {
     room.cleanupTimer = null;
   };
 
-  const addSocketToRoom = (socket, roomId, userData) => {
+  const scheduleOwnerMissingCleanup = (roomId) => {
+    const room = Rooms.get(roomId);
+    if (!room || isPlayerConnected(room, room.owner.id)) return;
+
+    if (room.ownerCleanupTimer) {
+      clearTimeout(room.ownerCleanupTimer);
+    }
+
+    io.to(roomId).emit("room-owner-disconnected", {
+      roomId,
+      message: "Admin disconnected. The room will close if they do not return.",
+    });
+
+    room.ownerCleanupTimer = setTimeout(() => {
+      const currentRoom = Rooms.get(roomId);
+      if (!currentRoom || isPlayerConnected(currentRoom, currentRoom.owner.id)) return;
+
+      closeRoom(roomId, "Admin left. Room resources were cleaned up.");
+    }, wsLimits.hostDisconnectGraceMs);
+  };
+
+  const cancelOwnerCleanup = (roomId) => {
+    const room = Rooms.get(roomId);
+    if (!room?.ownerCleanupTimer) return;
+
+    clearTimeout(room.ownerCleanupTimer);
+    room.ownerCleanupTimer = null;
+  };
+
+  const addSocketToRoom = (socket, roomId) => {
     const room = Rooms.get(roomId);
     if (!room) return null;
 
-    const user = normalizeUser(socket, userData);
+    const user = normalizeUser(socket);
+    if (!user) return null;
     ActiveUser.set(socket.id, user);
 
     const existingMember = room.members.get(user.id);
@@ -702,6 +780,7 @@ const InitWs = async (io) => {
     room.members.set(user.id, member);
 
     if (room.owner.id === user.id) {
+      cancelOwnerCleanup(roomId);
       room.owner = {
         ...room.owner,
         username: user.username,
@@ -722,6 +801,7 @@ const InitWs = async (io) => {
     const room = Rooms.get(roomId);
     const user = ActiveUser.get(socket.id);
     if (!room || !user) return;
+    const wasOwner = room.owner.id === user.id;
 
     const member = room.members.get(user.id);
     if (member) {
@@ -739,13 +819,16 @@ const InitWs = async (io) => {
       return;
     }
 
+    if (wasOwner && !isPlayerConnected(room, user.id)) {
+      scheduleOwnerMissingCleanup(roomId);
+    }
+
     skipDisconnectedCurrentPlayer(roomId, user.id);
     emitRoomMembers(roomId);
   };
 
   io.on("connection", (socket) => {
     const userdata = ActiveUser.get(socket.id);
-    console.log("user connected", userdata);
     socket.emit("connected", { data: userdata });
 
     socket.use((packet, next) => {
@@ -766,25 +849,32 @@ const InitWs = async (io) => {
 
     socket.on("send-stroke", (data) => {
       const user = ActiveUser.get(socket.id);
-      if (!user) return;
+      const roomId = getValidRoomId(data?.roomId || data?.id);
+      const room = roomId ? Rooms.get(roomId) : null;
+      if (!user || !room || !isRoomMember(room, user.id)) {
+        emitWsError(socket, "Join the room before drawing.");
+        return;
+      }
 
       const obj = {
         sendername: user.username,
         id: user.id,
         data: data,
       };
-      console.log("event recived boradcasting", obj);
-      socket.broadcast.emit("recieve-stroke", obj);
+      socket.to(roomId).emit("recieve-stroke", obj);
     });
 
     socket.on("create-group", (data, callback) => {
       const ack = typeof callback === "function" ? callback : () => {};
       const roomId = uuidv4();
       const trimmed = roomId
-      const owner = normalizeUser(socket, data?.currentUser);
+      const owner = normalizeUser(socket);
+      if (!owner) {
+        ack({ success: false, message: "Unauthorized." });
+        return;
+      }
       socket.join(trimmed);
       const settings = normalizeRoomSettings(data?.settings || {});
-      console.log("setings:", settings);
       Rooms.set(trimmed, {
         settings,
         cretedAt: Date.now(),
@@ -794,6 +884,7 @@ const InitWs = async (io) => {
         turnTimer: null,
         votingTimer: null,
         resultTimer: null,
+        ownerCleanupTimer: null,
         phase: "lobby",
         word: null,
         category: null,
@@ -803,7 +894,7 @@ const InitWs = async (io) => {
         currentTurnIndex: 0,
         currentPlayerId: null,
         currentRound: 0,
-        maxRounds: Number(settings.turnCyclesBeforeVote || 1),
+        maxRounds: clampTurnCyclesBeforeVote(settings.turnCyclesBeforeVote),
         turnDurationSeconds: DEFAULT_TURN_DURATION_SECONDS,
         maxStrokesPerTurn: settings.maxStrokesPerTurn,
         turnStrokeCounts: new Map(),
@@ -817,7 +908,7 @@ const InitWs = async (io) => {
         result: null,
       });
       GameState.set(trimmed, []);
-      addSocketToRoom(socket, trimmed, owner);
+      addSocketToRoom(socket, trimmed);
 
       ack({
         success: true,
@@ -829,7 +920,6 @@ const InitWs = async (io) => {
 
     socket.on("join-group", (data, callback) => {
       const ack = typeof callback === "function" ? callback : () => {};
-      console.log("Data:", data);
       const roomId = getValidRoomId(data?.id);
       if (!roomId) {
         ack({
@@ -841,7 +931,6 @@ const InitWs = async (io) => {
       }
       const isRoom = Rooms.get(roomId)
       if (!isRoom) {
-        console.log("room not found")
         ack({
           success: false,
           message: "Room not found or expired.",
@@ -850,7 +939,21 @@ const InitWs = async (io) => {
         return
       }
 
-      const joiningUser = normalizeUser(socket, data?.currentUser);
+      const joiningUser = normalizeUser(socket);
+      if (!joiningUser) {
+        ack({ success: false, message: "Unauthorized.", roomId });
+        return;
+      }
+      const existingMember = isRoom.members.get(joiningUser.id);
+      const roomMaxPlayers = clampMaxPlayers(isRoom.settings?.maxPlayers);
+      if (!existingMember && getConnectedMemberCount(isRoom) >= roomMaxPlayers) {
+        ack({
+          success: false,
+          message: "Room is full.",
+          roomId,
+        });
+        return
+      }
       if (isRoom.phase !== "lobby" && !isRoom.activePlayerIds?.has(joiningUser.id)) {
         ack({
           success: false,
@@ -861,10 +964,8 @@ const InitWs = async (io) => {
       }
 
       socket.join(roomId);
-      addSocketToRoom(socket, roomId, joiningUser);
+      addSocketToRoom(socket, roomId);
 
-      const gameData = GameState.get(roomId) || []
-      console.log("game data:", gameData)
       const room = Rooms.get(roomId);
       const user = ActiveUser.get(socket.id);
       const roleInfo = getRoleInfo(room, user?.id);
@@ -925,7 +1026,7 @@ const InitWs = async (io) => {
       const wordData = getRandomItem(WORD_BANK);
       const turnOrder = shuffle(connectedMembers.map((member) => member.id));
       const imposter = getRandomItem(connectedMembers);
-      const maxRounds = Math.max(1, Number(room.settings?.turnCyclesBeforeVote || 1));
+      const maxRounds = clampTurnCyclesBeforeVote(room.settings?.turnCyclesBeforeVote);
       const turnDurationSeconds = clampTurnDurationSeconds(
         data?.turnDurationSeconds || room.settings?.turnDurationSeconds
       );
@@ -973,11 +1074,11 @@ const InitWs = async (io) => {
     });
 
     socket.on("send-group-message", (data) => {
-      console.log("group msg recived:", data);
       const user = ActiveUser.get(socket.id);
       const roomId = getValidRoomId(data?.id);
+      const room = roomId ? Rooms.get(roomId) : null;
       const message = normalizeChatMessage(data?.message);
-      if (!user || !roomId || !Rooms.has(roomId) || !message) {
+      if (!user || !room || !isRoomMember(room, user.id) || !message) {
         emitWsError(socket, "Invalid chat message.");
         return;
       }
@@ -1002,7 +1103,6 @@ const InitWs = async (io) => {
         return;
       }
 
-      console.log("stroke postion streaming started", data)
       const stroke = {
         id: data.uuid,
         kind: streamPayload.kind,
@@ -1039,7 +1139,6 @@ const InitWs = async (io) => {
         return;
       }
 
-      console.log("stroke intermediate positions streaming", data)
       const activeStroke = ActiveStrokes.get(roomId)
       if (!activeStroke) return;
       if (activeStroke.userId !== user.id || activeStroke.id !== data.id) {
@@ -1070,8 +1169,6 @@ const InitWs = async (io) => {
         emitDrawBlocked(socket, blockReason || "Join the room before drawing.");
         return;
       }
-
-      console.log("stoke positions streaming ended", data)
 
       const activeStroke = ActiveStrokes.get(roomId)
       if (!activeStroke) return
@@ -1186,7 +1283,6 @@ const InitWs = async (io) => {
     })
 
     socket.on("disconnect", () => {
-      console.log("user disconnected");
       const roomIds = socket.data.disconnectingRooms || Array.from(socket.data.joinedRooms || []);
 
       roomIds.forEach((roomId) => {

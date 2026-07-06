@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import { getRequiredEnv } from "../Utils/env.js";
 
 
 const MeAuth = (req, res, next) => {
@@ -7,10 +8,10 @@ const MeAuth = (req, res, next) => {
 
 
   if (!data) {
-    return res.status(401).json({ message: "Unauthorized acess" });
+    return res.status(401).json({ message: "Unauthorized access" });
   }
   try {
-    const decoded = jwt.verify(data, process.env.INFO_SECRET);
+    const decoded = jwt.verify(data, getRequiredEnv("INFO_SECRET"));
     return res.status(200).json({
       message: "Authorized",
       userId: decoded.id,
