@@ -1,11 +1,11 @@
-
+import { useNavigate } from 'react-router-dom';
 
 import { v4 as uuidv4 } from 'uuid';
 import { validate as isValidUuid } from "uuid";
 import { createSocket } from "../Utils/socket"
 import useRoomStore from "@/Zustand/RoomStore";
 import { Brush, CheckCircle2, Circle, Clock, Copy, Crown, Eraser, Flame, KeyRound, LogOut, MessageCircle, Minus, MousePointer2, Palette, PartyPopper, Play, RotateCcw, Send, ShieldCheck, Sparkles, Square, Trophy, UserX, Users, Volume2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
 import type React from "react";
 import useSocketStore from "../SocketStore";
 import useUserStore from "../UserStore";
@@ -114,6 +114,7 @@ type ChatMessageView = {
 };
 
 const GameRoom = () => {
+  const nagivate = useNavigate();
 
   const guestProfile = useUserStore((state) => state.guestProfile);
   const currentUser = useUserStore((state) => state.currentUser);
@@ -123,6 +124,8 @@ const GameRoom = () => {
   const setSocketInstance = useSocketStore((state) => state.setSocketInstance)
   const clearSocketInstance = useSocketStore((state) => state.clearSocketInstance);
   const { setSettings, setRoomId, clearRoom, Settings, RoomId } = useRoomStore()
+
+  const bottomRef = useRef<HTMLDivElement>(null);
 
   const activeUser = useMemo<(User & { avatarCode?: string }) | null>(() => {
     if (currentUser) return currentUser;
@@ -134,6 +137,12 @@ const GameRoom = () => {
       avatar: guestProfile.avatar,
     };
   }, [currentUser, guestProfile]);
+
+  const ScrollMessageWindow = () => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: "end" });
+  }
+
+
 
   const [room, setRoom] = useState<any>(null);
   const [joinCode, setJoinCode] = useState("");
@@ -183,6 +192,7 @@ const GameRoom = () => {
 
   const LeaveRoom = () => {
     if (!RoomId || !isValidUuid(RoomId)) {
+      nagivate("/lobby")
       return
     }
     socketInstance?.emit("leave-group", { id: RoomId })
@@ -193,7 +203,15 @@ const GameRoom = () => {
     setRoleInfo(null)
     lastJoinedRoomKeyRef.current = ""
     setRoomId(null)
+    nagivate("/lobby")
   }
+
+  useLayoutEffect(() => {
+    if (bottomRef.current) {
+      // bottomRef.current.scrollTop = bottomRef.current.scrollHeight;
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: "end" });
+    }
+  }, [chatHistry]);
 
   const SendGroupMessage = () => {
     if (!RoomId || !isValidUuid(RoomId)) {
@@ -215,6 +233,9 @@ const GameRoom = () => {
         }]
     })
     setMsg("")
+    setTimeout(() => {
+      // ScrollMessageWindow()
+    }, 500)
   }
 
   const CopyRoomCode = () => {
@@ -1333,8 +1354,8 @@ const GameRoom = () => {
   const canvasCursor = canInspectStroke
     ? "pointer"
     : canDraw
-    ? activeTool === "eraser" ? eraserCursor : "crosshair"
-    : "not-allowed";
+      ? activeTool === "eraser" ? eraserCursor : "crosshair"
+      : "not-allowed";
 
   useEffect(() => {
     if (!hasStarted) return;
@@ -1403,8 +1424,8 @@ const GameRoom = () => {
                       className={`flex items-center gap-3 rounded-2xl border p-3 ${isTurnMember
                         ? "border-emerald-300/40 bg-emerald-400/10"
                         : isAdminMember
-                        ? "border-amber-300/25 bg-amber-300/10"
-                        : "border-white/10 bg-white/[0.03]"
+                          ? "border-amber-300/25 bg-amber-300/10"
+                          : "border-white/10 bg-white/[0.03]"
                         }`}
                     >
                       <AvatarBadge
@@ -1427,8 +1448,8 @@ const GameRoom = () => {
                         <span className={`h-2.5 w-2.5 rounded-full ${isTurnMember
                           ? "bg-emerald-300 shadow-[0_0_14px_rgba(110,231,183,0.95)]"
                           : item.connected
-                          ? "bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.8)]"
-                          : "bg-zinc-600"
+                            ? "bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.8)]"
+                            : "bg-zinc-600"
                           }`} />
                       </div>
                     </div>
@@ -1467,8 +1488,8 @@ const GameRoom = () => {
                         ? strokesRemaining <= 0
                           ? "Submit your action"
                           : hasSubmittedThisTurn
-                          ? "Draw another stroke or submit"
-                          : "Your turn"
+                            ? "Draw another stroke or submit"
+                            : "Your turn"
                         : `${currentPlayer?.username || "Player"} is drawing`}
                     </h2>
                     <p className="mt-1 text-sm text-zinc-400">
@@ -1708,8 +1729,24 @@ const GameRoom = () => {
                 {visibleMessages.length}
               </span>
             </div>
+            <style>{`
+    .chat-scroll::-webkit-scrollbar {
+      width: 6px;
+    }
+    .chat-scroll::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .chat-scroll::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 10px;
+    }
+    .chat-scroll::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.25);
+    }
+  `}</style>
 
-            <div className="mt-4 flex h-64 flex-col gap-3 overflow-y-auto rounded-2xl border border-white/10 bg-zinc-950/60 p-3">
+            <div className="mt-4 flex h-64 flex-col gap-3 overflow-y-auto rounded-2xl border border-white/10 p-3 chat-scroll" >
+
               {visibleMessages.length > 0 ? (
                 visibleMessages.map((item, index) => {
                   const isMine = item.sender === "you";
@@ -1752,6 +1789,7 @@ const GameRoom = () => {
                   No messages yet
                 </div>
               )}
+              <div ref={bottomRef} />
             </div>
 
             <div className="mt-3 flex gap-2">
@@ -1791,18 +1829,20 @@ const GameRoom = () => {
           ) : null}
         </aside>
       </div>
-      {isVotingPhase ? (
-        <VotingModal
-          players={votingPlayers}
-          activeUserId={activeUser?.id}
-          hasVoted={hasVoted}
-          secondsRemaining={votingSecondsRemaining}
-          votesCount={room?.votesCount || 0}
-          eligibleVotes={room?.eligibleVotes || 0}
-          onVote={SubmitVote}
-        />
-      ) : null}
-    </main>
+      {
+        isVotingPhase ? (
+          <VotingModal
+            players={votingPlayers}
+            activeUserId={activeUser?.id}
+            hasVoted={hasVoted}
+            secondsRemaining={votingSecondsRemaining}
+            votesCount={room?.votesCount || 0}
+            eligibleVotes={room?.eligibleVotes || 0}
+            onVote={SubmitVote}
+          />
+        ) : null
+      }
+    </main >
   );
 };
 
@@ -2046,19 +2086,7 @@ const WaitingForAdminStart = ({
 
         <section className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
           <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="min-w-0 flex-1">
-              <p className="text-sm text-zinc-400">Invite</p>
-              <button
-                type="button"
-                onClick={onCopyRoom}
-                className="mt-2 flex max-w-full items-center gap-3 rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-left text-sm text-zinc-100 transition hover:bg-white/[0.08]"
-              >
-                <span className="min-w-0 truncate">
-                  Copy room URL{roomId ? ` · ${roomId.slice(0, 8)}` : ""}
-                </span>
-                <Copy className="h-4 w-4 shrink-0 text-sky-300" />
-              </button>
-            </div>
+
             <div className="min-w-36">
               <p className="text-sm text-zinc-400">Start readiness</p>
               <p className="mt-2 text-lg font-semibold text-white">{readyPercent}%</p>
@@ -2327,11 +2355,10 @@ const ResultsPanel = ({ result }: { result: GameResult }) => {
         <ResultCelebrationSvg artistsWin={result.artistsWin} />
         <div className="absolute inset-0 flex flex-col justify-between p-5 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-semibold ${
-              result.artistsWin
-                ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
-                : "border-fuchsia-300/30 bg-fuchsia-400/10 text-fuchsia-100"
-            }`}>
+            <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-semibold ${result.artistsWin
+              ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
+              : "border-fuchsia-300/30 bg-fuchsia-400/10 text-fuchsia-100"
+              }`}>
               {result.artistsWin ? <ShieldCheck className="h-4 w-4" /> : <KeyRound className="h-4 w-4" />}
               {result.artistsWin ? "Artists win" : "Imposter wins"}
             </div>
@@ -2403,11 +2430,10 @@ const ResultsPanel = ({ result }: { result: GameResult }) => {
               {visibleWinnerNames.map((name) => (
                 <span
                   key={name}
-                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-semibold ${
-                    result.artistsWin
-                      ? "border-emerald-300/25 bg-emerald-400/10 text-emerald-100"
-                      : "border-fuchsia-300/25 bg-fuchsia-400/10 text-fuchsia-100"
-                  }`}
+                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-semibold ${result.artistsWin
+                    ? "border-emerald-300/25 bg-emerald-400/10 text-emerald-100"
+                    : "border-fuchsia-300/25 bg-fuchsia-400/10 text-fuchsia-100"
+                    }`}
                 >
                   <Trophy className="h-4 w-4" />
                   {name}
@@ -2443,11 +2469,10 @@ const ResultsPanel = ({ result }: { result: GameResult }) => {
               return (
                 <div
                   key={count.playerId}
-                  className={`rounded-xl border p-3 ${
-                    isImposter
-                      ? "border-amber-300/25 bg-amber-300/10"
-                      : "border-white/10 bg-white/[0.03]"
-                  }`}
+                  className={`rounded-xl border p-3 ${isImposter
+                    ? "border-amber-300/25 bg-amber-300/10"
+                    : "border-white/10 bg-white/[0.03]"
+                    }`}
                 >
                   <div className="flex items-center justify-between gap-3 text-sm">
                     <span className="min-w-0 truncate font-semibold text-zinc-100">{count.playerName}</span>
@@ -2532,13 +2557,12 @@ const ResultSideCard = ({
         {visibleNames.map((name) => (
           <span
             key={`${title}-${name}`}
-            className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
-              active
-                ? tone === "emerald"
-                  ? "border-emerald-200/25 bg-emerald-300/10 text-emerald-100"
-                  : "border-fuchsia-200/25 bg-fuchsia-300/10 text-fuchsia-100"
-                : "border-white/10 bg-zinc-950/50 text-zinc-300"
-            }`}
+            className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${active
+              ? tone === "emerald"
+                ? "border-emerald-200/25 bg-emerald-300/10 text-emerald-100"
+                : "border-fuchsia-200/25 bg-fuchsia-300/10 text-fuchsia-100"
+              : "border-white/10 bg-zinc-950/50 text-zinc-300"
+              }`}
           >
             {name}
           </span>

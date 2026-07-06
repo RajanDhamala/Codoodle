@@ -1,9 +1,6 @@
 name: Deployment
 
 on:
-  push:
-    branches: ["main"]
-
   pull_request:
     branches: ["main"]
 
@@ -19,7 +16,7 @@ jobs:
       - name: Setup node js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - name: setup pnpm
         uses: pnpm/action-setup@v4
@@ -45,6 +42,7 @@ jobs:
 
     env:
       IMAGE_NAME: ghcr.io/rajandhamala/codoodle-api
+      CONTAINER_NAME: codoole-api
 
     steps:
       - name: chekout repo
@@ -53,7 +51,7 @@ jobs:
       - name: Install nodejs
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - name: install pnpm
         uses: pnpm/action-setup@v4
@@ -96,4 +94,5 @@ jobs:
           port: ${{ secrets.PORT }}
           script: |
             whoami
-            pwd
+            docker pull ${{env.IMAGE_NAME}}:${{github.sha}}
+            docker stop ${{env.CONTAINER_NAME}} 2>/dev/null || true
