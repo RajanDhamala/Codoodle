@@ -43,7 +43,7 @@ jobs:
           port: ${{ secrets.PORT }}
           source: "apps/web/dist/*"
           target: "/var/www/Coloodle/"
-          strip_components: 1
+          strip_components: 3
 
   api:
     name: api
