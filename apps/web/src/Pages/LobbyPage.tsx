@@ -162,12 +162,6 @@ const LobbyPage = () => {
   };
 
   useEffect(() => {
-    if (!guestProfile) {
-      setIsProfileModalOpen(true);
-    }
-  }, [guestProfile]);
-
-  useEffect(() => {
     if (!profileSetupState?.openProfileSetup) return;
 
     setIsProfileModalOpen(true);
