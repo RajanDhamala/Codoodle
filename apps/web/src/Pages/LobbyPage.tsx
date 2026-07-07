@@ -21,11 +21,7 @@ import {
 import { AvatarBadge } from "./GameAvatar";
 import useSocketStore from "../SocketStore";
 import useUserStore from "../UserStore";
-import {
-  defaultGameSettings,
-  type GameSettings,
-  type User,
-} from "./GameTypes";
+import { defaultGameSettings, type GameSettings, type User } from "./GameTypes";
 import toast from "react-hot-toast";
 import useRoomStore from "@/Zustand/RoomStore";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -44,7 +40,8 @@ type CreateRoomResponse = {
   message?: string;
 };
 
-type NumericSettingKey = "maxPlayers" | "turnCyclesBeforeVote" | "maxStrokesPerTurn";
+type NumericSettingKey =
+  "maxPlayers" | "turnCyclesBeforeVote" | "maxStrokesPerTurn";
 
 const clampNumber = (value: number, min: number, max: number) => {
   if (!Number.isFinite(value)) return min;
@@ -62,7 +59,9 @@ const LobbyPage = () => {
   const currentUser = useUserStore((state) => state.currentUser);
   const socketInstance = useSocketStore((state) => state.socketInstance);
   const setSocketInstance = useSocketStore((state) => state.setSocketInstance);
-  const clearSocketInstance = useSocketStore((state) => state.clearSocketInstance);
+  const clearSocketInstance = useSocketStore(
+    (state) => state.clearSocketInstance,
+  );
   const clearGuestProfile = useUserStore((state) => state.clearGuestProfile);
   const clearCurrentUser = useUserStore((state) => state.clearCurrentUser);
   const setGuestProfile = useUserStore((state) => state.setGuestProfile);
@@ -83,13 +82,14 @@ const LobbyPage = () => {
   }, [currentUser, guestProfile]);
 
   const [room, setRoom] = useState<string | null>(null);
-  const [settingsDraft, setSettingsDraft] = useState<GameSettings>(defaultGameSettings);
-  const [isSocketReady, setIsSocketReady] = useState(() => Boolean(socketInstance?.connected));
-  const [isProfileModalOpen, setIsProfileModalOpen] = useState(
-    () => !guestProfile || Boolean(profileSetupState?.openProfileSetup)
+  const [settingsDraft, setSettingsDraft] =
+    useState<GameSettings>(defaultGameSettings);
+  const [isSocketReady, setIsSocketReady] = useState(() =>
+    Boolean(socketInstance?.connected),
   );
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [profileRedirect, setProfileRedirect] = useState<string | null>(
-    () => profileSetupState?.returnTo ?? null
+    () => profileSetupState?.returnTo ?? null,
   );
 
   const createRoom = () => {
@@ -117,7 +117,7 @@ const LobbyPage = () => {
         setRoom(data.roomId);
         toast.success("Room created.");
         navigate(`/gameRoom/${data.roomId}`);
-      }
+      },
     );
   };
 
@@ -160,12 +160,6 @@ const LobbyPage = () => {
       navigate("/lobby", { replace: true });
     }
   };
-
-  useEffect(() => {
-    if (!guestProfile) {
-      setIsProfileModalOpen(true);
-    }
-  }, [guestProfile]);
 
   useEffect(() => {
     if (!profileSetupState?.openProfileSetup) return;
@@ -226,7 +220,8 @@ const LobbyPage = () => {
               Sketch around the secret.
             </h1>
             <p className="mt-5 max-w-2xl text-base leading-7 text-[#d8cab0] sm:text-lg">
-              Host a private table for friends. Everyone draws from the same word, while one player only gets the hint and has to blend in.
+              Host a private table for friends. Everyone draws from the same
+              word, while one player only gets the hint and has to blend in.
             </p>
 
             <div className="mt-7 grid gap-3 sm:grid-cols-3">
@@ -247,13 +242,18 @@ const LobbyPage = () => {
               />
             </div>
 
-            <SketchTable settings={settingsDraft} isSocketReady={isSocketReady} />
+            <SketchTable
+              settings={settingsDraft}
+              isSocketReady={isSocketReady}
+            />
           </div>
 
           <aside className="rounded-lg border-2 border-[#171512] bg-[#fff1cf] p-4 text-[#171512] shadow-[14px_14px_0_#050505] sm:p-5">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-sm font-semibold text-[#a5412c]">Host controls</p>
+                <p className="text-sm font-semibold text-[#a5412c]">
+                  Host controls
+                </p>
                 <h2 className="mt-1 text-3xl font-black [font-family:'Trebuchet_MS',ui-sans-serif,system-ui]">
                   Create room
                 </h2>
@@ -586,8 +586,23 @@ const SketchTable = ({
 
       <g transform="rotate(-2 78 50)">
         <g className="lobby-hint-card">
-          <rect x="16" y="24" width="142" height="62" rx="7" fill="#fffdf4" stroke="#171512" strokeWidth="3" />
-          <path d="M30 48 H144" stroke="#ff5b3d" strokeWidth="5" strokeLinecap="round" opacity="0.22" />
+          <rect
+            x="16"
+            y="24"
+            width="142"
+            height="62"
+            rx="7"
+            fill="#fffdf4"
+            stroke="#171512"
+            strokeWidth="3"
+          />
+          <path
+            d="M30 48 H144"
+            stroke="#ff5b3d"
+            strokeWidth="5"
+            strokeLinecap="round"
+            opacity="0.22"
+          />
           <text x="30" y="47" fontSize="12" fontWeight="900" fill="#a5412c">
             Artists see
           </text>
@@ -598,7 +613,16 @@ const SketchTable = ({
       </g>
 
       <g transform="rotate(2 267 50)">
-        <rect x="190" y="24" width="152" height="62" rx="7" fill="#2cd3c5" stroke="#171512" strokeWidth="3" />
+        <rect
+          x="190"
+          y="24"
+          width="152"
+          height="62"
+          rx="7"
+          fill="#2cd3c5"
+          stroke="#171512"
+          strokeWidth="3"
+        />
         <text x="203" y="47" fontSize="12" fontWeight="900" fill="#06413d">
           Imposter hint
         </text>
@@ -608,12 +632,49 @@ const SketchTable = ({
       </g>
 
       <g transform="translate(0 12)">
-        <ellipse cx="180" cy="194" rx="68" ry="32" fill="none" stroke="#171512" strokeWidth="4" opacity="0.12" />
-        <ellipse cx="180" cy="194" rx="108" ry="52" fill="none" stroke="#171512" strokeWidth="4" opacity="0.12" />
-        <ellipse cx="180" cy="194" rx="146" ry="72" fill="none" stroke="#171512" strokeWidth="4" opacity="0.12" />
+        <ellipse
+          cx="180"
+          cy="194"
+          rx="68"
+          ry="32"
+          fill="none"
+          stroke="#171512"
+          strokeWidth="4"
+          opacity="0.12"
+        />
+        <ellipse
+          cx="180"
+          cy="194"
+          rx="108"
+          ry="52"
+          fill="none"
+          stroke="#171512"
+          strokeWidth="4"
+          opacity="0.12"
+        />
+        <ellipse
+          cx="180"
+          cy="194"
+          rx="146"
+          ry="72"
+          fill="none"
+          stroke="#171512"
+          strokeWidth="4"
+          opacity="0.12"
+        />
 
-        <g className="lobby-solar-stroke lobby-solar-stroke-one" style={strokeAnimationStyle(360, "0s")}>
-          <circle cx="180" cy="194" r="31" fill="#f2c94c" stroke="#171512" strokeWidth="6" />
+        <g
+          className="lobby-solar-stroke lobby-solar-stroke-one"
+          style={strokeAnimationStyle(360, "0s")}
+        >
+          <circle
+            cx="180"
+            cy="194"
+            r="31"
+            fill="#f2c94c"
+            stroke="#171512"
+            strokeWidth="6"
+          />
           <path
             d="M180 144 V122 M180 266 V244 M130 194 H110 M250 194 H230 M144 158 L128 142 M232 250 L216 234 M144 230 L128 246 M232 138 L216 154"
             fill="none"
@@ -635,8 +696,18 @@ const SketchTable = ({
           className="lobby-solar-stroke lobby-solar-stroke-two"
           style={strokeAnimationStyle(330, "0s")}
         />
-        <g className="lobby-solar-stroke lobby-solar-stroke-two" style={strokeAnimationStyle(84, "0s")}>
-          <circle cx="248" cy="194" r="9" fill="#9b8a79" stroke="#171512" strokeWidth="4" />
+        <g
+          className="lobby-solar-stroke lobby-solar-stroke-two"
+          style={strokeAnimationStyle(84, "0s")}
+        >
+          <circle
+            cx="248"
+            cy="194"
+            r="9"
+            fill="#9b8a79"
+            stroke="#171512"
+            strokeWidth="4"
+          />
           <text x="230" y="176" fontSize="15" fontWeight="900" fill="#171512">
             Mercury
           </text>
@@ -654,9 +725,25 @@ const SketchTable = ({
           className="lobby-solar-stroke lobby-solar-stroke-three"
           style={strokeAnimationStyle(510, "0s")}
         />
-        <g className="lobby-solar-stroke lobby-solar-stroke-three" style={strokeAnimationStyle(92, "0s")}>
-          <circle cx="103" cy="230" r="14" fill="#f97316" stroke="#171512" strokeWidth="4" />
-          <path d="M92 224 C101 233 112 234 118 226" fill="none" stroke="#fff1cf" strokeLinecap="round" strokeWidth="4" />
+        <g
+          className="lobby-solar-stroke lobby-solar-stroke-three"
+          style={strokeAnimationStyle(92, "0s")}
+        >
+          <circle
+            cx="103"
+            cy="230"
+            r="14"
+            fill="#f97316"
+            stroke="#171512"
+            strokeWidth="4"
+          />
+          <path
+            d="M92 224 C101 233 112 234 118 226"
+            fill="none"
+            stroke="#fff1cf"
+            strokeLinecap="round"
+            strokeWidth="4"
+          />
           <text x="72" y="260" fontSize="16" fontWeight="900" fill="#171512">
             Venus
           </text>
@@ -674,9 +761,25 @@ const SketchTable = ({
           className="lobby-solar-stroke lobby-solar-stroke-four"
           style={strokeAnimationStyle(690, "0s")}
         />
-        <g className="lobby-solar-stroke lobby-solar-stroke-four" style={strokeAnimationStyle(100, "0s")}>
-          <circle cx="296" cy="238" r="15" fill="#2cd3c5" stroke="#171512" strokeWidth="4" />
-          <path d="M286 232 C295 238 305 238 312 230 M284 244 C294 250 306 250 313 242" fill="none" stroke="#06413d" strokeLinecap="round" strokeWidth="4" />
+        <g
+          className="lobby-solar-stroke lobby-solar-stroke-four"
+          style={strokeAnimationStyle(100, "0s")}
+        >
+          <circle
+            cx="296"
+            cy="238"
+            r="15"
+            fill="#2cd3c5"
+            stroke="#171512"
+            strokeWidth="4"
+          />
+          <path
+            d="M286 232 C295 238 305 238 312 230 M284 244 C294 250 306 250 313 242"
+            fill="none"
+            stroke="#06413d"
+            strokeLinecap="round"
+            strokeWidth="4"
+          />
           <text x="276" y="270" fontSize="16" fontWeight="900" fill="#171512">
             Earth
           </text>
@@ -684,18 +787,35 @@ const SketchTable = ({
       </g>
 
       <g transform="translate(20 318)">
-        <rect x="0" y="0" width="320" height="42" rx="7" fill="#fffdf4" stroke="#171512" strokeOpacity="0.18" />
+        <rect
+          x="0"
+          y="0"
+          width="320"
+          height="42"
+          rx="7"
+          fill="#fffdf4"
+          stroke="#171512"
+          strokeOpacity="0.18"
+        />
         <text x="13" y="18" fontSize="12" fontWeight="900" fill="#6f5f45">
           Draw order
         </text>
         <circle cx="18" cy="30" r="5" fill="#ff5b3d" />
-        <text x="29" y="34" fontSize="12" fontWeight="900" fill="#171512">sun</text>
+        <text x="29" y="34" fontSize="12" fontWeight="900" fill="#171512">
+          sun
+        </text>
         <circle cx="76" cy="30" r="5" fill="#7c5cff" />
-        <text x="87" y="34" fontSize="12" fontWeight="900" fill="#171512">Mercury</text>
+        <text x="87" y="34" fontSize="12" fontWeight="900" fill="#171512">
+          Mercury
+        </text>
         <circle cx="164" cy="30" r="5" fill="#ff5b3d" />
-        <text x="175" y="34" fontSize="12" fontWeight="900" fill="#171512">Venus</text>
+        <text x="175" y="34" fontSize="12" fontWeight="900" fill="#171512">
+          Venus
+        </text>
         <circle cx="240" cy="30" r="5" fill="#2cd3c5" />
-        <text x="251" y="34" fontSize="12" fontWeight="900" fill="#171512">Earth</text>
+        <text x="251" y="34" fontSize="12" fontWeight="900" fill="#171512">
+          Earth
+        </text>
       </g>
     </svg>
 
@@ -710,8 +830,23 @@ const SketchTable = ({
 
       <g transform="rotate(-2 126 58)">
         <g className="lobby-hint-card">
-          <rect x="32" y="28" width="194" height="76" rx="8" fill="#fffdf4" stroke="#171512" strokeWidth="3" />
-          <path d="M48 56 H210" stroke="#ff5b3d" strokeWidth="6" strokeLinecap="round" opacity="0.22" />
+          <rect
+            x="32"
+            y="28"
+            width="194"
+            height="76"
+            rx="8"
+            fill="#fffdf4"
+            stroke="#171512"
+            strokeWidth="3"
+          />
+          <path
+            d="M48 56 H210"
+            stroke="#ff5b3d"
+            strokeWidth="6"
+            strokeLinecap="round"
+            opacity="0.22"
+          />
           <text x="50" y="55" fontSize="14" fontWeight="900" fill="#a5412c">
             Artists see
           </text>
@@ -722,7 +857,16 @@ const SketchTable = ({
       </g>
 
       <g transform="rotate(2 514 62)">
-        <rect x="428" y="28" width="180" height="76" rx="8" fill="#2cd3c5" stroke="#171512" strokeWidth="3" />
+        <rect
+          x="428"
+          y="28"
+          width="180"
+          height="76"
+          rx="8"
+          fill="#2cd3c5"
+          stroke="#171512"
+          strokeWidth="3"
+        />
         <text x="446" y="55" fontSize="14" fontWeight="900" fill="#06413d">
           Imposter hint
         </text>
@@ -732,12 +876,49 @@ const SketchTable = ({
       </g>
 
       <g transform="translate(0 18)">
-        <ellipse cx="320" cy="212" rx="98" ry="46" fill="none" stroke="#171512" strokeWidth="4" opacity="0.12" />
-        <ellipse cx="320" cy="212" rx="154" ry="74" fill="none" stroke="#171512" strokeWidth="4" opacity="0.12" />
-        <ellipse cx="320" cy="212" rx="214" ry="102" fill="none" stroke="#171512" strokeWidth="4" opacity="0.12" />
+        <ellipse
+          cx="320"
+          cy="212"
+          rx="98"
+          ry="46"
+          fill="none"
+          stroke="#171512"
+          strokeWidth="4"
+          opacity="0.12"
+        />
+        <ellipse
+          cx="320"
+          cy="212"
+          rx="154"
+          ry="74"
+          fill="none"
+          stroke="#171512"
+          strokeWidth="4"
+          opacity="0.12"
+        />
+        <ellipse
+          cx="320"
+          cy="212"
+          rx="214"
+          ry="102"
+          fill="none"
+          stroke="#171512"
+          strokeWidth="4"
+          opacity="0.12"
+        />
 
-        <g className="lobby-solar-stroke lobby-solar-stroke-one" style={strokeAnimationStyle(460, "0s")}>
-          <circle cx="320" cy="212" r="36" fill="#f2c94c" stroke="#171512" strokeWidth="6" />
+        <g
+          className="lobby-solar-stroke lobby-solar-stroke-one"
+          style={strokeAnimationStyle(460, "0s")}
+        >
+          <circle
+            cx="320"
+            cy="212"
+            r="36"
+            fill="#f2c94c"
+            stroke="#171512"
+            strokeWidth="6"
+          />
           <path
             d="M320 151 V127 M320 297 V273 M259 212 H235 M405 212 H381 M276 168 L258 150 M382 274 L364 256 M276 256 L258 274 M382 150 L364 168"
             fill="none"
@@ -759,8 +940,18 @@ const SketchTable = ({
           className="lobby-solar-stroke lobby-solar-stroke-two"
           style={strokeAnimationStyle(480, "0s")}
         />
-        <g className="lobby-solar-stroke lobby-solar-stroke-two" style={strokeAnimationStyle(72, "0s")}>
-          <circle cx="418" cy="212" r="10" fill="#9b8a79" stroke="#171512" strokeWidth="4" />
+        <g
+          className="lobby-solar-stroke lobby-solar-stroke-two"
+          style={strokeAnimationStyle(72, "0s")}
+        >
+          <circle
+            cx="418"
+            cy="212"
+            r="10"
+            fill="#9b8a79"
+            stroke="#171512"
+            strokeWidth="4"
+          />
           <text x="432" y="206" fontSize="15" fontWeight="900" fill="#171512">
             Mercury
           </text>
@@ -778,9 +969,25 @@ const SketchTable = ({
           className="lobby-solar-stroke lobby-solar-stroke-three"
           style={strokeAnimationStyle(720, "0s")}
         />
-        <g className="lobby-solar-stroke lobby-solar-stroke-three" style={strokeAnimationStyle(92, "0s")}>
-          <circle cx="210" cy="264" r="15" fill="#f97316" stroke="#171512" strokeWidth="4" />
-          <path d="M198 258 C207 267 219 268 224 260" fill="none" stroke="#fff1cf" strokeLinecap="round" strokeWidth="4" />
+        <g
+          className="lobby-solar-stroke lobby-solar-stroke-three"
+          style={strokeAnimationStyle(92, "0s")}
+        >
+          <circle
+            cx="210"
+            cy="264"
+            r="15"
+            fill="#f97316"
+            stroke="#171512"
+            strokeWidth="4"
+          />
+          <path
+            d="M198 258 C207 267 219 268 224 260"
+            fill="none"
+            stroke="#fff1cf"
+            strokeLinecap="round"
+            strokeWidth="4"
+          />
           <text x="154" y="292" fontSize="15" fontWeight="900" fill="#171512">
             Venus
           </text>
@@ -798,9 +1005,25 @@ const SketchTable = ({
           className="lobby-solar-stroke lobby-solar-stroke-four"
           style={strokeAnimationStyle(980, "0s")}
         />
-        <g className="lobby-solar-stroke lobby-solar-stroke-four" style={strokeAnimationStyle(108, "0s")}>
-          <circle cx="488" cy="276" r="17" fill="#2cd3c5" stroke="#171512" strokeWidth="4" />
-          <path d="M478 270 C487 276 498 276 505 268 M475 282 C485 288 498 288 506 280" fill="none" stroke="#06413d" strokeLinecap="round" strokeWidth="4" />
+        <g
+          className="lobby-solar-stroke lobby-solar-stroke-four"
+          style={strokeAnimationStyle(108, "0s")}
+        >
+          <circle
+            cx="488"
+            cy="276"
+            r="17"
+            fill="#2cd3c5"
+            stroke="#171512"
+            strokeWidth="4"
+          />
+          <path
+            d="M478 270 C487 276 498 276 505 268 M475 282 C485 288 498 288 506 280"
+            fill="none"
+            stroke="#06413d"
+            strokeLinecap="round"
+            strokeWidth="4"
+          />
           <text x="505" y="306" fontSize="15" fontWeight="900" fill="#171512">
             Earth
           </text>
@@ -808,25 +1031,48 @@ const SketchTable = ({
       </g>
 
       <g transform="translate(40 374)">
-        <rect x="0" y="0" width="560" height="38" rx="7" fill="#fffdf4" stroke="#171512" strokeOpacity="0.18" />
+        <rect
+          x="0"
+          y="0"
+          width="560"
+          height="38"
+          rx="7"
+          fill="#fffdf4"
+          stroke="#171512"
+          strokeOpacity="0.18"
+        />
         <text x="18" y="24" fontSize="14" fontWeight="900" fill="#6f5f45">
           Draw order
         </text>
         <circle cx="132" cy="19" r="7" fill="#ff5b3d" />
-        <text x="146" y="24" fontSize="14" fontWeight="900" fill="#171512">sun</text>
+        <text x="146" y="24" fontSize="14" fontWeight="900" fill="#171512">
+          sun
+        </text>
         <circle cx="218" cy="19" r="7" fill="#7c5cff" />
-        <text x="232" y="24" fontSize="14" fontWeight="900" fill="#171512">Mercury orbit</text>
+        <text x="232" y="24" fontSize="14" fontWeight="900" fill="#171512">
+          Mercury orbit
+        </text>
         <circle cx="359" cy="19" r="7" fill="#ff5b3d" />
-        <text x="373" y="24" fontSize="14" fontWeight="900" fill="#171512">Venus</text>
+        <text x="373" y="24" fontSize="14" fontWeight="900" fill="#171512">
+          Venus
+        </text>
         <circle cx="438" cy="19" r="7" fill="#2cd3c5" />
-        <text x="452" y="24" fontSize="14" fontWeight="900" fill="#171512">Earth</text>
+        <text x="452" y="24" fontSize="14" fontWeight="900" fill="#171512">
+          Earth
+        </text>
       </g>
     </svg>
 
     <div className="grid gap-2 border-t-2 border-[#171512] pt-3 sm:grid-cols-3">
       <SketchMetric label="Players" value={`3-${settings.maxPlayers}`} />
-      <SketchMetric label="Turns" value={`${settings.turnCyclesBeforeVote} cycles`} />
-      <SketchMetric label="Server" value={isSocketReady ? "ready" : "connecting"} />
+      <SketchMetric
+        label="Turns"
+        value={`${settings.turnCyclesBeforeVote} cycles`}
+      />
+      <SketchMetric
+        label="Server"
+        value={isSocketReady ? "ready" : "connecting"}
+      />
     </div>
   </div>
 );
@@ -869,7 +1115,7 @@ const SettingsControls = ({
     key: NumericSettingKey,
     value: number,
     min: number,
-    max: number
+    max: number,
   ) => {
     setSettings((previous) => ({
       ...previous,
@@ -895,12 +1141,16 @@ const SettingsControls = ({
         min={1}
         max={5}
         disabled={disabled}
-        onChange={(value) => updateNumericSetting("turnCyclesBeforeVote", value, 1, 5)}
+        onChange={(value) =>
+          updateNumericSetting("turnCyclesBeforeVote", value, 1, 5)
+        }
       />
       <StrokeSetting
         value={settings.maxStrokesPerTurn}
         disabled={disabled}
-        onChange={(value) => updateNumericSetting("maxStrokesPerTurn", value, 1, 3)}
+        onChange={(value) =>
+          updateNumericSetting("maxStrokesPerTurn", value, 1, 3)
+        }
       />
       <ToggleSetting
         label="Draft undo"
@@ -951,7 +1201,9 @@ const SettingSlider = ({
     <div className="flex items-start justify-between gap-3">
       <div>
         <p className="font-black">{label}</p>
-        <p className="mt-1 text-sm font-semibold text-[#6f5f45]">{description}</p>
+        <p className="mt-1 text-sm font-semibold text-[#6f5f45]">
+          {description}
+        </p>
       </div>
       <output className="rounded-md border-2 border-[#171512] bg-[#fffdf4] px-3 py-1 text-lg font-black">
         {value}
@@ -982,7 +1234,9 @@ const StrokeSetting = ({
     <div className="flex items-start justify-between gap-3">
       <div>
         <p className="font-black">Strokes per turn</p>
-        <p className="mt-1 text-sm font-semibold text-[#6f5f45]">Server limit is 3</p>
+        <p className="mt-1 text-sm font-semibold text-[#6f5f45]">
+          Server limit is 3
+        </p>
       </div>
       <div className="grid grid-cols-[40px_48px_40px] items-center gap-2">
         <button
@@ -1027,7 +1281,9 @@ const ToggleSetting = ({
   <label className="flex cursor-pointer items-center justify-between gap-4 py-4">
     <span>
       <span className="block font-black">{label}</span>
-      <span className="mt-1 block text-sm font-semibold text-[#6f5f45]">{description}</span>
+      <span className="mt-1 block text-sm font-semibold text-[#6f5f45]">
+        {description}
+      </span>
     </span>
     <span className="relative inline-flex h-8 w-14 shrink-0 items-center">
       <input
