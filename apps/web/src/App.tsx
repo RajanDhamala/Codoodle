@@ -60,6 +60,7 @@ const normalizeServerUser = (
 const RequireGameRoomProfile = ({ children }: { children: ReactNode }) => {
   const guestProfile = useUserStore((state) => state.guestProfile);
   const location = useLocation();
+  const returnTo = `${location.pathname}${location.search}${location.hash}`;
 
   return guestProfile ? (
     children
@@ -67,7 +68,7 @@ const RequireGameRoomProfile = ({ children }: { children: ReactNode }) => {
     <Navigate
       to="/lobby"
       replace
-      state={{ openProfileSetup: true, returnTo: location.pathname }}
+      state={{ openProfileSetup: true, returnTo }}
     />
   );
 };

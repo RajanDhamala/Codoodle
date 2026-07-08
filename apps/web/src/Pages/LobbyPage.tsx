@@ -34,6 +34,34 @@ type LobbyLocationState = {
   returnTo?: string;
 };
 
+const pendingProfileReturnKey = "coloodle:pending-profile-return";
+
+const normalizeProfileReturnTo = (returnTo?: string | null) => {
+  if (!returnTo) return null;
+  if (!returnTo.startsWith("/") || returnTo.startsWith("//")) return null;
+
+  return returnTo;
+};
+
+const readPendingProfileReturn = () => {
+  if (typeof window === "undefined") return null;
+
+  return normalizeProfileReturnTo(
+    window.sessionStorage.getItem(pendingProfileReturnKey),
+  );
+};
+
+const savePendingProfileReturn = (returnTo: string | null) => {
+  if (typeof window === "undefined") return;
+
+  if (returnTo) {
+    window.sessionStorage.setItem(pendingProfileReturnKey, returnTo);
+    return;
+  }
+
+  window.sessionStorage.removeItem(pendingProfileReturnKey);
+};
+
 type CreateRoomResponse = {
   success?: boolean;
   roomId?: string;
@@ -69,6 +97,9 @@ const LobbyPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const profileSetupState = location.state as LobbyLocationState | null;
+  const routeProfileReturnTo = normalizeProfileReturnTo(
+    profileSetupState?.returnTo,
+  );
 
   const activeUser = useMemo<User | null>(() => {
     if (currentUser) return currentUser;
@@ -89,12 +120,13 @@ const LobbyPage = () => {
   );
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [profileRedirect, setProfileRedirect] = useState<string | null>(
-    () => profileSetupState?.returnTo ?? null,
+    () => routeProfileReturnTo ?? readPendingProfileReturn(),
   );
 
   const createRoom = () => {
     if (!activeUser) {
       setProfileRedirect(null);
+      savePendingProfileReturn(null);
       setIsProfileModalOpen(true);
       return;
     }
@@ -131,12 +163,14 @@ const LobbyPage = () => {
     clearGuestProfile();
     clearCurrentUser();
     setProfileRedirect(null);
+    savePendingProfileReturn(null);
     setIsProfileModalOpen(true);
   };
 
   const closeProfileModal = () => {
     setIsProfileModalOpen(false);
     setProfileRedirect(null);
+    savePendingProfileReturn(null);
 
     if (profileSetupState?.openProfileSetup) {
       navigate("/lobby", { replace: true });
@@ -148,8 +182,10 @@ const LobbyPage = () => {
     clearCurrentUser();
     setIsProfileModalOpen(false);
 
-    const redirect = profileRedirect;
+    const redirect =
+      profileRedirect ?? routeProfileReturnTo ?? readPendingProfileReturn();
     setProfileRedirect(null);
+    savePendingProfileReturn(null);
 
     if (redirect) {
       navigate(redirect, { replace: true });
@@ -164,8 +200,10 @@ const LobbyPage = () => {
   useEffect(() => {
     if (!profileSetupState?.openProfileSetup) return;
 
+    const redirect = normalizeProfileReturnTo(profileSetupState.returnTo);
     setIsProfileModalOpen(true);
-    setProfileRedirect(profileSetupState.returnTo ?? null);
+    setProfileRedirect(redirect);
+    savePendingProfileReturn(redirect);
   }, [profileSetupState?.openProfileSetup, profileSetupState?.returnTo]);
 
   useEffect(() => {
