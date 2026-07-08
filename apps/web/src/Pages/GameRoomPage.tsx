@@ -187,7 +187,7 @@ const GameRoom = () => {
   const setSocketInstance = useSocketStore((state) => state.setSocketInstance)
   const { setSettings, setRoomId, clearRoom, RoomId } = useRoomStore()
 
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const chatMessagesRef = useRef<HTMLDivElement>(null);
 
   const activeUser = useMemo<(User & { avatarCode?: string }) | null>(() => {
     if (currentUser) return currentUser;
@@ -237,14 +237,19 @@ const GameRoom = () => {
   }, [activeUser]);
 
   useEffect(() => {
+    if (!room?.turnEndsAt && !room?.votingEndsAt) {
+      return
+    }
+
+    setNow(Date.now())
     const timer = setInterval(() => {
       setNow(Date.now())
-    }, 500)
+    }, 1000)
 
     return () => {
       clearInterval(timer)
     }
-  }, [])
+  }, [room?.turnEndsAt, room?.votingEndsAt])
 
   const LeaveRoom = () => {
     if (!RoomId || !isValidUuid(RoomId)) {
@@ -264,9 +269,11 @@ const GameRoom = () => {
   }
 
   useLayoutEffect(() => {
-    if (bottomRef.current) {
-      // bottomRef.current.scrollTop = bottomRef.current.scrollHeight;
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: "end" });
+    if (chatMessagesRef.current) {
+      chatMessagesRef.current.scrollTo({
+        top: chatMessagesRef.current.scrollHeight,
+        behavior: "smooth",
+      });
     }
   }, [chatHistry]);
 
@@ -289,8 +296,6 @@ const GameRoom = () => {
         }]
     })
     setMsg("")
-    setTimeout(() => {
-    }, 500)
   }
 
   const CopyRoomCode = () => {
@@ -801,6 +806,8 @@ const GameRoom = () => {
   const draftSnapshotRef = useRef<ImageData | null>(null)
   const localColorRef = useRef<string>("#111827")
   const localWidthRef = useRef<number>(7)
+  const activePointerIdRef = useRef<number | null>(null)
+  const latestStrokePointRef = useRef<Points | null>(null)
 
   const addStrokeToHistory = (stroke: Stroke) => {
     pointerIndexRef.current = historyLengthRef.current
@@ -906,7 +913,6 @@ const GameRoom = () => {
       return
     }
     socketInstance?.emit("send-stream", { data, id: activeIdref.current, "roomId": RoomId })
-    console.log("event stream sent")
   }
 
   const EndEventStream = () => {
@@ -915,11 +921,8 @@ const GameRoom = () => {
 
     const arrayLength = data.intermediate.length
 
-
-    console.log("buufer index:", bufferRef.current, "length:", arrayLength)
     const duplicated = collectBufferedPoints(data)
     const bufferLength2send = duplicated.length
-    console.log("sent length:", bufferLength2send)
 
     if (bufferLength2send > 0) {
       bufferRef.current = arrayLength
@@ -1133,6 +1136,37 @@ const GameRoom = () => {
     setSelectedStrokeInfo(null)
   }
 
+  const releaseCanvasPointer = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    }
+  }
+
+  const resetLocalStroke = () => {
+    localStrokeRef.current = {
+      initial: null,
+      intermediate: [],
+      final: null,
+      color: null,
+      width: null,
+      userId: null,
+      username: null,
+    }
+    draftSnapshotRef.current = null
+    bufferRef.current = 0
+    activePointerIdRef.current = null
+    latestStrokePointRef.current = null
+  }
+
+  const getCommitPoint = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const latestPoint = latestStrokePointRef.current
+    if (latestPoint) {
+      return { ...latestPoint }
+    }
+
+    return getMousePos(e)
+  }
+
   const onMouseDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const pos = getMousePos(e)
     const displayPoint = getCanvasDisplayPoint(e)
@@ -1151,10 +1185,14 @@ const GameRoom = () => {
       return
     }
 
-    setSelectedStrokeInfo(null)
-    if (!isUDrawing.current) {
-      isUDrawing.current = true
+    if (isUDrawing.current) {
+      return
     }
+
+    setSelectedStrokeInfo(null)
+    isUDrawing.current = true
+    activePointerIdRef.current = e.pointerId
+    latestStrokePointRef.current = { ...pos }
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext("2d")
@@ -1182,13 +1220,13 @@ const GameRoom = () => {
 
   const onMouseUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!isUDrawing.current) return
+    if (activePointerIdRef.current !== e.pointerId) return
     if (!canDraw) {
       isUDrawing.current = false
-      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-        e.currentTarget.releasePointerCapture(e.pointerId)
-      }
+      releaseCanvasPointer(e)
       clearThrottleTimer()
       redrawHistoryUntil(pointerIndexRef.current)
+      resetLocalStroke()
       return
     }
     isUDrawing.current = false
@@ -1196,10 +1234,8 @@ const GameRoom = () => {
     if (!canvas) return
     const ctx = canvas.getContext("2d")
     if (!ctx) return
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-      e.currentTarget.releasePointerCapture(e.pointerId)
-    }
-    const pos = getMousePos(e)
+    releaseCanvasPointer(e)
+    const pos = getCommitPoint(e)
 
     if (isShapeTool(localStrokeRef.current.kind)) {
       restoreDraftSnapshot(ctx)
@@ -1223,28 +1259,21 @@ const GameRoom = () => {
     addStrokeToHistory(finishedStroke)
     // EmitStroker(currentStroke)
     EndEventStream()
-    localStrokeRef.current = {
-      initial: null,
-      intermediate: [],
-      final: null,
-      color: null,
-      width: null,
-      userId: null,
-      username: null,
-    }
-    draftSnapshotRef.current = null
-    bufferRef.current = 0
+    resetLocalStroke()
   }
 
   const onMouseMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    console.log("mouse is moving btw")
     if (!isUDrawing.current) {
+      return
+    }
+    if (activePointerIdRef.current !== e.pointerId) {
       return
     }
     if (!canDraw) {
       isUDrawing.current = false
       clearThrottleTimer()
       redrawHistoryUntil(pointerIndexRef.current)
+      resetLocalStroke()
       return
     }
     const canvas = canvasRef.current
@@ -1252,6 +1281,7 @@ const GameRoom = () => {
     const ctx = canvas.getContext("2d")
     if (!ctx) return
     const pos = getMousePos(e)
+    latestStrokePointRef.current = { ...pos }
 
     if (isShapeTool(localStrokeRef.current.kind)) {
       restoreDraftSnapshot(ctx)
@@ -1264,7 +1294,6 @@ const GameRoom = () => {
       drawLineSegment(ctx, lastPoint, pos, localStrokeRef.current)
     }
 
-    console.log("postion iz", pos)
     localStrokeRef.current.intermediate.push(pos)
     Thottler(localStrokeRef.current)
   }
@@ -1341,11 +1370,8 @@ const GameRoom = () => {
   const HandelUndo = () => {
     setSelectedStrokeInfo(null)
     const currentIndex = Math.min(pointerIndexRef.current, Histry.length - 1)
-    console.log("inital strokeIndex before undo:", currentIndex)
-    console.log("Ready to Undo")
 
     if (currentIndex <= -1) {
-      console.log("no index to undo")
       pointerIndexRef.current = -1
       return
     }
@@ -1353,16 +1379,21 @@ const GameRoom = () => {
     const nextIndex = currentIndex - 1
     pointerIndexRef.current = nextIndex
     redrawHistoryUntil(nextIndex)
-    console.log("final strokeIndex after undo:", nextIndex)
   }
 
   const getMousePos = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current!;
     const rect = canvas.getBoundingClientRect();
+    const x = rect.width
+      ? ((e.clientX - rect.left) / rect.width) * canvas.width
+      : 0
+    const y = rect.height
+      ? ((e.clientY - rect.top) / rect.height) * canvas.height
+      : 0
 
     return {
-      x: ((e.clientX - rect.left) / rect.width) * canvas.width,
-      y: ((e.clientY - rect.top) / rect.height) * canvas.height,
+      x: Math.min(canvas.width, Math.max(0, x)),
+      y: Math.min(canvas.height, Math.max(0, y)),
     };
   };
 
@@ -1817,7 +1848,7 @@ const GameRoom = () => {
     }
   `}</style>
 
-            <div className="mt-4 flex h-64 flex-col gap-3 overflow-y-auto rounded-2xl border border-white/10 p-3 chat-scroll" >
+            <div ref={chatMessagesRef} className="mt-4 flex h-64 flex-col gap-3 overflow-y-auto rounded-2xl border border-white/10 p-3 chat-scroll" >
 
               {visibleMessages.length > 0 ? (
                 visibleMessages.map((item, index) => {
@@ -1861,7 +1892,6 @@ const GameRoom = () => {
                   No messages yet
                 </div>
               )}
-              <div ref={bottomRef} />
             </div>
 
             <div className="mt-3 flex gap-2">
