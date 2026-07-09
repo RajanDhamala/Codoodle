@@ -221,193 +221,207 @@ export const GuestProfileSetup = ({ onSave, variant = "page" }: GuestProfileSetu
   };
 
   const formClassName = [
-    "w-full rounded-3xl border border-white/10 bg-white/[0.04] p-4 shadow-2xl shadow-black/30 sm:p-6",
-    variant === "page" ? "max-w-3xl" : "",
+    "w-full rounded-2xl border border-[#e5e7eb] bg-white p-4 sm:p-6",
+    variant === "page" ? "max-w-3xl elev-3" : "elev-modal",
   ]
     .filter(Boolean)
     .join(" ");
 
   const form = (
     <form onSubmit={submitProfile} className={formClassName}>
-          <div className="rounded-2xl border border-white/10 bg-zinc-950/70 p-4 sm:p-5">
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <input
-                value={username}
-                onChange={(event) => {
-                  setUsername(event.target.value);
-                  setError("");
-                }}
-                placeholder="Enter your name"
-                maxLength={20}
-                className="h-12 min-w-0 flex-1 rounded-xl border border-white/10 bg-zinc-950 px-4 text-base font-medium text-zinc-50 outline-none ring-sky-400/40 transition placeholder:text-zinc-500 focus:ring-4"
-              />
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#0f766e]">
+            Guest profile
+          </p>
+          <h2 className="mt-1 text-2xl font-bold tracking-[-0.02em] text-[#0f172a] [font-family:'Space_Grotesk',Inter,ui-sans-serif]">
+            Set up your player
+          </h2>
+        </div>
+        <span className="grid h-11 w-11 place-items-center rounded-xl border border-[#ccfbf1] bg-[#f0fdfa] text-[#0f766e]">
+          <UserRound className="h-5 w-5" />
+        </span>
+      </div>
 
+      <div className="mt-5 rounded-xl border border-[#e5e7eb] bg-[#f3f4f6] p-4 sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <input
+            value={username}
+            onChange={(event) => {
+              setUsername(event.target.value);
+              setError("");
+            }}
+            placeholder="Enter your name"
+            maxLength={20}
+            className="h-12 min-w-0 flex-1 rounded-xl border border-[#e5e7eb] bg-white px-4 text-base font-medium text-[#0f172a] outline-none ring-[#0f766e]/25 transition placeholder:text-[#94a3b8] focus:border-[#0f766e] focus:ring-4"
+          />
+
+          <button
+            type="button"
+            onClick={randomizeProfile}
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-[#e5e7eb] bg-white px-4 text-sm font-semibold text-[#334155] elev-1 transition hover:border-[#0f172a] hover:text-[#0f172a]"
+          >
+            <Shuffle className="h-4 w-4" />
+            Random
+          </button>
+        </div>
+
+        <div className="mt-5 lg:hidden">
+          <div className="rounded-xl border border-[#e5e7eb] bg-white px-4 py-5 text-center">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#0f766e]">
+              {mobileAvatarStep + 1}/{avatarSteps.length} · {activeMobileStep.label}
+            </p>
+
+            <div className="mt-4 grid grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-3">
               <button
                 type="button"
-                onClick={randomizeProfile}
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-semibold text-zinc-100 transition hover:bg-white/10"
+                onClick={() => stepMobileAvatarValue(-1)}
+                className="flex h-11 items-center justify-center rounded-xl border border-[#e5e7eb] bg-white text-[#334155] elev-1 transition hover:border-[#0f172a] hover:text-[#0f172a]"
+                aria-label={`Previous ${activeMobileStep.label}`}
               >
-                <Shuffle className="h-4 w-4" />
-                Random
+                <ChevronLeft className="h-5 w-5" />
               </button>
-            </div>
 
-            <div className="mt-5 lg:hidden">
-              <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-5 text-center">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-sky-300">
-                  {mobileAvatarStep + 1}/{avatarSteps.length} · {activeMobileStep.label}
-                </p>
-
-                <div className="mt-4 grid grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => stepMobileAvatarValue(-1)}
-                    className="flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-white transition hover:bg-white/10"
-                    aria-label={`Previous ${activeMobileStep.label}`}
-                  >
-                    <ChevronLeft className="h-5 w-5" />
-                  </button>
-
-                  <div>
-                    <AvatarBadge
-                      avatar={avatar}
-                      name={username}
-                      className="mx-auto h-36 w-36 rounded-[28px] border-none bg-transparent"
-                    />
-                    <p className="mt-3 text-xl font-semibold text-white">
-                      {username.trim() || "Player"}
-                    </p>
-                    <p className="mt-1 text-xs uppercase tracking-[0.22em] text-zinc-500">
-                      Guest profile
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => stepMobileAvatarValue(1)}
-                    className="flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-white transition hover:bg-white/10"
-                    aria-label={`Next ${activeMobileStep.label}`}
-                  >
-                    <ChevronRight className="h-5 w-5" />
-                  </button>
-                </div>
-
-                <div className="mt-4 rounded-2xl border border-white/10 bg-zinc-950/70 px-3 py-3">
-                  <div className="flex items-center justify-center gap-2">
-                    {activeMobileStep.showSwatch && activeMobileOption ? (
-                      <span
-                        className="h-5 w-5 rounded-md border border-white/20"
-                        style={{ backgroundColor: activeMobileOption.id }}
-                      />
-                    ) : null}
-                    <span className="text-sm font-semibold text-white">
-                      {activeMobileOption?.label}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="mt-4 grid grid-cols-2 gap-2">
-                  {avatarSteps.map((step, index) => (
-                    <button
-                      key={step.key}
-                      type="button"
-                      onClick={() => setMobileAvatarStep(index)}
-                      className={`rounded-xl border px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] transition ${index === mobileAvatarStep
-                        ? "border-sky-300/60 bg-sky-400/10 text-sky-100"
-                        : "border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10"
-                        }`}
-                    >
-                      {step.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-5 hidden items-center gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_220px_minmax(0,1fr)]">
-              <div className="grid gap-3">
-                <AvatarCycleControl
-                  label="Hair style"
-                  value={avatar.hairStyle}
-                  options={avatarHairStyleOptions}
-                  onChange={(hairStyle) => updateAvatar({ hairStyle })}
-                />
-                <AvatarCycleControl
-                  label="Hair color"
-                  value={avatar.hairColor}
-                  options={avatarHairColorOptions}
-                  onChange={(hairColor) => updateAvatar({ hairColor })}
-                  showSwatch
-                />
-                <AvatarCycleControl
-                  label="Eyes"
-                  value={avatar.eyeStyle}
-                  options={avatarEyeOptions}
-                  onChange={(eyeStyle) => updateAvatar({ eyeStyle })}
-                />
-                <AvatarCycleControl
-                  label="Accessory"
-                  value={avatar.accessory}
-                  options={avatarAccessoryOptions}
-                  onChange={(accessory) => updateAvatar({ accessory })}
-                />
-              </div>
-
-              <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-5 text-center">
+              <div>
                 <AvatarBadge
                   avatar={avatar}
                   name={username}
-                  className="mx-auto h-40 w-40 rounded-[28px] border-none bg-transparent"
+                  className="mx-auto h-36 w-36 rounded-[28px] border-none bg-transparent shadow-none"
                 />
-                <p className="mt-3 text-xl font-semibold text-white">
+                <p className="mt-3 text-xl font-bold text-[#0f172a]">
                   {username.trim() || "Player"}
                 </p>
-                <p className="mt-1 text-xs uppercase tracking-[0.22em] text-zinc-500">
+                <p className="mt-1 text-xs uppercase tracking-[0.22em] text-[#64748b]">
                   Guest profile
                 </p>
               </div>
 
-              <div className="grid gap-3">
-                <AvatarCycleControl
-                  label="Body color"
-                  value={avatar.bodyColor}
-                  options={avatarBodyColorOptions}
-                  onChange={(bodyColor) => updateAvatar({ bodyColor })}
-                  showSwatch
-                />
-                <AvatarCycleControl
-                  label="Background"
-                  value={avatar.background}
-                  options={avatarBackgroundOptions}
-                  onChange={(background) => updateAvatar({ background })}
-                  showSwatch
-                />
-                <AvatarCycleControl
-                  label="Mouth"
-                  value={avatar.mouthStyle}
-                  options={avatarMouthOptions}
-                  onChange={(mouthStyle) => updateAvatar({ mouthStyle })}
-                />
-                <AvatarCycleControl
-                  label="Pattern"
-                  value={avatar.pattern}
-                  options={avatarPatternOptions}
-                  onChange={(pattern) => updateAvatar({ pattern })}
-                />
+              <button
+                type="button"
+                onClick={() => stepMobileAvatarValue(1)}
+                className="flex h-11 items-center justify-center rounded-xl border border-[#e5e7eb] bg-white text-[#334155] elev-1 transition hover:border-[#0f172a] hover:text-[#0f172a]"
+                aria-label={`Next ${activeMobileStep.label}`}
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-[#e5e7eb] bg-[#f3f4f6] px-3 py-3">
+              <div className="flex items-center justify-center gap-2">
+                {activeMobileStep.showSwatch && activeMobileOption ? (
+                  <span
+                    className="h-5 w-5 rounded-md border border-[#e5e7eb]"
+                    style={{ backgroundColor: activeMobileOption.id }}
+                  />
+                ) : null}
+                <span className="text-sm font-semibold text-[#0f172a]">
+                  {activeMobileOption?.label}
+                </span>
               </div>
             </div>
 
-            {error && <p className="mt-4 text-sm text-red-200">{error}</p>}
-
-            <button
-              type="submit"
-              disabled={!canSave}
-              className="mt-5 flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-sky-400 px-4 text-xl font-bold text-zinc-950 transition hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <UserRound className="h-5 w-5" />
-              Continue as guest
-            </button>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              {avatarSteps.map((step, index) => (
+                <button
+                  key={step.key}
+                  type="button"
+                  onClick={() => setMobileAvatarStep(index)}
+                  className={`rounded-lg border px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] transition ${index === mobileAvatarStep
+                    ? "border-[#0f766e]/40 bg-[#f0fdfa] text-[#0f766e]"
+                    : "border-[#e5e7eb] bg-white text-[#334155] hover:border-[#0f172a] hover:text-[#0f172a]"
+                    }`}
+                >
+                  {step.label}
+                </button>
+              ))}
+            </div>
           </div>
+        </div>
+
+        <div className="mt-5 hidden items-center gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_220px_minmax(0,1fr)]">
+          <div className="grid gap-3">
+            <AvatarCycleControl
+              label="Hair style"
+              value={avatar.hairStyle}
+              options={avatarHairStyleOptions}
+              onChange={(hairStyle) => updateAvatar({ hairStyle })}
+            />
+            <AvatarCycleControl
+              label="Hair color"
+              value={avatar.hairColor}
+              options={avatarHairColorOptions}
+              onChange={(hairColor) => updateAvatar({ hairColor })}
+              showSwatch
+            />
+            <AvatarCycleControl
+              label="Eyes"
+              value={avatar.eyeStyle}
+              options={avatarEyeOptions}
+              onChange={(eyeStyle) => updateAvatar({ eyeStyle })}
+            />
+            <AvatarCycleControl
+              label="Accessory"
+              value={avatar.accessory}
+              options={avatarAccessoryOptions}
+              onChange={(accessory) => updateAvatar({ accessory })}
+            />
+          </div>
+
+          <div className="rounded-xl border border-[#e5e7eb] bg-[#f3f4f6] px-4 py-5 text-center">
+            <AvatarBadge
+              avatar={avatar}
+              name={username}
+              className="mx-auto h-40 w-40 rounded-[28px] border-none bg-transparent shadow-none"
+            />
+            <p className="mt-3 text-xl font-bold text-[#0f172a]">
+              {username.trim() || "Player"}
+            </p>
+            <p className="mt-1 text-xs uppercase tracking-[0.22em] text-[#64748b]">
+              Guest profile
+            </p>
+          </div>
+
+          <div className="grid gap-3">
+            <AvatarCycleControl
+              label="Body color"
+              value={avatar.bodyColor}
+              options={avatarBodyColorOptions}
+              onChange={(bodyColor) => updateAvatar({ bodyColor })}
+              showSwatch
+            />
+            <AvatarCycleControl
+              label="Background"
+              value={avatar.background}
+              options={avatarBackgroundOptions}
+              onChange={(background) => updateAvatar({ background })}
+              showSwatch
+            />
+            <AvatarCycleControl
+              label="Mouth"
+              value={avatar.mouthStyle}
+              options={avatarMouthOptions}
+              onChange={(mouthStyle) => updateAvatar({ mouthStyle })}
+            />
+            <AvatarCycleControl
+              label="Pattern"
+              value={avatar.pattern}
+              options={avatarPatternOptions}
+              onChange={(pattern) => updateAvatar({ pattern })}
+            />
+          </div>
+        </div>
+
+        {error && <p className="mt-4 text-sm font-medium text-[#b91c1c]">{error}</p>}
+
+        <button
+          type="submit"
+          disabled={!canSave}
+          className="mt-5 flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-[#0f766e] px-4 text-lg font-bold text-white elev-accent transition hover:bg-[#0d6a63] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <UserRound className="h-5 w-5" />
+          Continue as guest
+        </button>
+      </div>
     </form>
   );
 
@@ -416,8 +430,7 @@ export const GuestProfileSetup = ({ onSave, variant = "page" }: GuestProfileSetu
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-zinc-950 px-4 py-8 text-zinc-50">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.12),transparent_44%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(0,0,0,0.2))]" />
+    <main className="relative min-h-screen overflow-hidden bg-[#f6f7f9] px-4 py-8 text-[#0f172a] [font-family:Inter,ui-sans-serif,system-ui]">
       <div className="relative mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-5xl items-center justify-center">
         {form}
       </div>
@@ -456,10 +469,10 @@ const AvatarCycleControl = <T extends string>({
   if (!selectedOption) return null;
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-zinc-950/70 px-3 py-2">
+    <div className="rounded-xl border border-[#e5e7eb] bg-white px-3 py-2 elev-1">
       <div className="mb-2 flex items-center justify-between gap-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-300">{label}</p>
-        <p className="text-[11px] text-zinc-500">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#334155]">{label}</p>
+        <p className="text-[11px] font-medium text-[#64748b]">
           {selectedIndex + 1 || 1}/{options.length}
         </p>
       </div>
@@ -467,20 +480,20 @@ const AvatarCycleControl = <T extends string>({
         <button
           type="button"
           onClick={() => step(-1)}
-          className="flex h-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-white transition hover:bg-white/10"
+          className="flex h-10 items-center justify-center rounded-lg border border-[#e5e7eb] bg-[#f3f4f6] text-[#334155] transition hover:border-[#0f172a] hover:text-[#0f172a]"
           aria-label={`Previous ${label}`}
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
 
-        <div className="flex min-h-10 min-w-0 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 text-center">
+        <div className="flex min-h-10 min-w-0 items-center justify-center gap-2 rounded-lg border border-[#e5e7eb] bg-[#f3f4f6] px-3 text-center">
           {showSwatch && (
             <span
-              className="h-5 w-5 shrink-0 rounded-md border border-white/20"
+              className="h-5 w-5 shrink-0 rounded-md border border-[#e5e7eb]"
               style={{ backgroundColor: selectedOption.id }}
             />
           )}
-          <span className="truncate text-sm font-semibold text-white">
+          <span className="truncate text-sm font-semibold text-[#0f172a]">
             {selectedOption.label}
           </span>
         </div>
@@ -488,7 +501,7 @@ const AvatarCycleControl = <T extends string>({
         <button
           type="button"
           onClick={() => step(1)}
-          className="flex h-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-white transition hover:bg-white/10"
+          className="flex h-10 items-center justify-center rounded-lg border border-[#e5e7eb] bg-[#f3f4f6] text-[#334155] transition hover:border-[#0f172a] hover:text-[#0f172a]"
           aria-label={`Next ${label}`}
         >
           <ChevronRight className="h-5 w-5" />

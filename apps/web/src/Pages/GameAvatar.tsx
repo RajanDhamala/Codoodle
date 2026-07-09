@@ -19,7 +19,7 @@ export const AvatarBadge = ({
 
   return (
     <span
-      className={`inline-flex shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-zinc-900 ${className}`}
+      className={`inline-flex shrink-0 overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white elev-1 ${className}`}
       aria-label={name ? `${name} avatar` : "Player avatar"}
       role="img"
     >
@@ -49,7 +49,7 @@ export const AvatarFromCode = ({
 
   return (
     <span
-      className={`inline-flex shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-zinc-900 ${className}`}
+      className={`inline-flex shrink-0 overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white elev-1 ${className}`}
       style={style}
       aria-label={name ? `${name} avatar` : "Player avatar"}
       role="img"

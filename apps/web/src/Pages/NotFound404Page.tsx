@@ -7,7 +7,7 @@ const NotFound404Page = () => {
   };
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#171512] px-4 py-5 text-[#fff8e6] [font-family:Inter,ui-sans-serif,system-ui] sm:px-6 lg:px-8">
+    <main className="relative min-h-screen overflow-hidden bg-[#f6f7f9] px-4 py-5 text-[#0f172a] [font-family:Inter,ui-sans-serif,system-ui] sm:px-6 lg:px-8">
       <style>
         {`
           @keyframes not-found-draw {
@@ -100,13 +100,10 @@ const NotFound404Page = () => {
         `}
       </style>
 
-      <div className="pointer-events-none fixed inset-0 bg-[linear-gradient(90deg,rgba(255,248,230,0.045)_1px,transparent_1px),linear-gradient(0deg,rgba(255,248,230,0.035)_1px,transparent_1px)] bg-[size:38px_38px]" />
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-48 bg-[linear-gradient(180deg,rgba(44,211,197,0.14),transparent)]" />
-
       <section className="relative mx-auto grid min-h-[calc(100vh-2.5rem)] w-full max-w-7xl items-center gap-8 py-6 lg:grid-cols-[minmax(0,0.92fr)_minmax(360px,1.08fr)]">
         <div className="min-w-0 py-2 sm:py-6">
-          <div className="mb-6 inline-flex max-w-full items-center gap-3 rounded-lg border border-[#fff8e6]/15 bg-[#fff8e6]/[0.045] p-2 pr-4 shadow-[0_10px_0_rgba(0,0,0,0.38)]">
-            <span className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-lg border-2 border-[#050505] bg-[#fff8e6] shadow-[4px_4px_0_#050505]">
+          <div className="mb-6 inline-flex max-w-full items-center gap-3 rounded-xl border border-[#e5e7eb] bg-white p-2 pr-4 elev-2">
+            <span className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-lg border border-[#e5e7eb] bg-[#f3f4f6]">
               <img
                 src="/coloodle.svg"
                 alt=""
@@ -115,31 +112,31 @@ const NotFound404Page = () => {
               />
             </span>
             <span className="min-w-0">
-              <span className="block truncate text-2xl font-black leading-none text-[#fff8e6] [font-family:'Trebuchet_MS',ui-sans-serif,system-ui]">
+              <span className="block truncate text-2xl font-black leading-none text-[#0f172a] [font-family:'Space_Grotesk',Inter,ui-sans-serif]">
                 Coloodle
               </span>
-              <span className="mt-1 block truncate text-xs font-black uppercase text-[#2cd3c5]">
+              <span className="mt-1 block truncate text-xs font-black uppercase tracking-[0.18em] text-[#0f766e]">
                 Missing route
               </span>
             </span>
           </div>
 
-          <div className="inline-flex items-center gap-2 rounded-md border border-[#2cd3c5]/35 bg-[#2cd3c5]/10 px-3 py-2 text-sm font-black text-[#9ef7ef]">
+          <div className="inline-flex items-center gap-2 rounded-lg border border-[#ccfbf1] bg-[#f0fdfa] px-3 py-2 text-sm font-bold text-[#0f766e]">
             <SearchX className="h-4 w-4" />
             404 not found
           </div>
 
-          <h1 className="mt-5 max-w-3xl text-6xl font-black leading-none text-[#fff8e6] [font-family:'Trebuchet_MS',ui-sans-serif,system-ui] sm:text-7xl lg:text-8xl">
+          <h1 className="mt-5 max-w-3xl text-6xl font-black leading-[1.02] tracking-[-0.02em] text-[#0f172a] [font-family:'Space_Grotesk',Inter,ui-sans-serif] sm:text-7xl lg:text-8xl">
             Wrong canvas.
           </h1>
-          <p className="mt-5 max-w-2xl text-base leading-7 text-[#d8cab0] sm:text-lg">
+          <p className="mt-5 max-w-2xl text-base leading-7 text-[#475569] sm:text-lg">
             This page is not on the board anymore. Head back to the lobby and start from a fresh sketch.
           </p>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <Link
               to="/lobby"
-              className="inline-flex h-14 items-center justify-center gap-2 rounded-md border-2 border-[#171512] bg-[#ff5b3d] px-5 text-base font-black text-[#171512] shadow-[5px_5px_0_#050505] transition hover:-translate-y-0.5 hover:shadow-[8px_8px_0_#050505] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2cd3c5]"
+              className="inline-flex h-14 items-center justify-center gap-2 rounded-xl bg-[#0f766e] px-5 text-base font-bold text-white elev-accent transition hover:-translate-y-0.5 hover:bg-[#0d6a63] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f766e]"
             >
               <Home className="h-5 w-5" />
               Back to lobby
@@ -147,7 +144,7 @@ const NotFound404Page = () => {
             <button
               type="button"
               onClick={goBack}
-              className="inline-flex h-14 items-center justify-center gap-2 rounded-md border-2 border-[#fff8e6]/20 bg-[#fff8e6]/[0.06] px-5 text-base font-black text-[#fff8e6] shadow-[5px_5px_0_rgba(0,0,0,0.42)] transition hover:-translate-y-0.5 hover:border-[#2cd3c5]/60 hover:bg-[#fff8e6]/10 hover:shadow-[8px_8px_0_rgba(0,0,0,0.5)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2cd3c5]"
+              className="inline-flex h-14 items-center justify-center gap-2 rounded-xl border border-[#e5e7eb] bg-white px-5 text-base font-bold text-[#334155] elev-1 transition hover:-translate-y-0.5 hover:border-[#0f172a] hover:text-[#0f172a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f766e]"
             >
               <ArrowLeft className="h-5 w-5" />
               Go back
@@ -156,8 +153,8 @@ const NotFound404Page = () => {
         </div>
 
         <div className="relative mx-auto w-full max-w-3xl">
-          <div className="absolute -left-2 top-8 hidden h-16 w-16 rotate-[-8deg] rounded-md border-2 border-[#050505] bg-[#2cd3c5] shadow-[5px_5px_0_#050505] sm:block" />
-          <div className="absolute -right-2 bottom-12 hidden h-20 w-20 rotate-[7deg] rounded-md border-2 border-[#050505] bg-[#ff5b3d] shadow-[5px_5px_0_#050505] sm:block" />
+          <div className="absolute -left-2 top-8 hidden h-16 w-16 rotate-[-8deg] rounded-lg border border-[#e5e7eb] bg-[#f0fdfa] elev-2 sm:block" />
+          <div className="absolute -right-2 bottom-12 hidden h-20 w-20 rotate-[7deg] rounded-lg border border-[#e5e7eb] bg-[#fff7ed] elev-2 sm:block" />
 
           <svg
             className="not-found-motion h-auto w-full"
@@ -173,16 +170,17 @@ const NotFound404Page = () => {
             <path
               d="M105 492H655"
               fill="none"
-              stroke="#050505"
+              stroke="#0f172a"
               strokeLinecap="round"
               strokeWidth="16"
-              opacity="0.28"
+              opacity="0.16"
             />
 
             <g className="not-found-float">
               <path
                 d="M118 80H622C646 80 664 98 664 122V434C664 458 646 476 622 476H118C94 476 76 458 76 434V122C76 98 94 80 118 80Z"
-                fill="#050505"
+                fill="#0f172a"
+                opacity="0.08"
               />
               <rect
                 x="88"
@@ -190,53 +188,51 @@ const NotFound404Page = () => {
                 width="576"
                 height="396"
                 rx="8"
-                fill="#fff1cf"
-                stroke="#171512"
+                fill="#ffffff"
+                stroke="#0f172a"
                 strokeWidth="8"
               />
               <path
                 d="M128 118H624"
                 fill="none"
-                stroke="#171512"
+                stroke="#0f172a"
                 strokeLinecap="round"
                 strokeWidth="6"
+                opacity="0.5"
               />
-              <circle cx="128" cy="94" r="10" fill="#ff5b3d" stroke="#171512" strokeWidth="5" />
-              <circle cx="162" cy="94" r="10" fill="#f5c44d" stroke="#171512" strokeWidth="5" />
-              <circle cx="196" cy="94" r="10" fill="#2cd3c5" stroke="#171512" strokeWidth="5" />
-
-
-
+              <circle cx="128" cy="94" r="10" fill="#fb7185" stroke="#0f172a" strokeWidth="5" />
+              <circle cx="162" cy="94" r="10" fill="#facc15" stroke="#0f172a" strokeWidth="5" />
+              <circle cx="196" cy="94" r="10" fill="#0f766e" stroke="#0f172a" strokeWidth="5" />
 
               <g className="not-found-scan">
                 <path
                   d="M220 158H520"
                   fill="none"
-                  stroke="#171512"
+                  stroke="#0f172a"
                   strokeDasharray="14 18"
                   strokeLinecap="round"
                   strokeWidth="6"
-                  opacity="0.48"
+                  opacity="0.32"
                 />
                 <path
                   d="M202 386H538"
                   fill="none"
-                  stroke="#171512"
+                  stroke="#0f172a"
                   strokeDasharray="10 18"
                   strokeLinecap="round"
                   strokeWidth="5"
-                  opacity="0.32"
+                  opacity="0.22"
                 />
               </g>
 
               <g aria-label="404" role="img">
                 <g
                   fill="none"
-                  stroke="#050505"
+                  stroke="#0f172a"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth="31"
-                  opacity="0.2"
+                  opacity="0.1"
                   transform="translate(8 10)"
                 >
                   <path d="M272 184L216 278H304M286 187V324" />
@@ -252,17 +248,17 @@ const NotFound404Page = () => {
                   <path
                     className="not-found-number-line"
                     d="M272 184L216 278H304M286 187V324"
-                    stroke="#171512"
+                    stroke="#0f172a"
                   />
                   <path
                     className="not-found-number-line not-found-number-second"
                     d="M386 188C323 190 314 318 380 325C446 332 456 198 393 188"
-                    stroke="#171512"
+                    stroke="#0f766e"
                   />
                   <path
                     className="not-found-number-line not-found-number-third"
                     d="M522 184L466 278H554M536 187V324"
-                    stroke="#171512"
+                    stroke="#0f172a"
                   />
                 </g>
                 <g
@@ -278,28 +274,28 @@ const NotFound404Page = () => {
             <g className="not-found-wiggle">
               <path
                 d="M610 375L678 310L704 337L637 404L604 414L610 375Z"
-                fill="#f5c44d"
-                stroke="#171512"
+                fill="#facc15"
+                stroke="#0f172a"
                 strokeLinejoin="round"
                 strokeWidth="7"
               />
 
               <path
                 d="M604 414L616 382L637 404Z"
-                fill="#fff8e6"
-                stroke="#171512"
+                fill="#f3f4f6"
+                stroke="#0f172a"
                 strokeLinejoin="round"
                 strokeWidth="6"
               />
             </g>
 
             <g>
-              <circle cx="168" cy="500" r="23" fill="#2cd3c5" stroke="#050505" strokeWidth="6" />
-              <path d="M142 538C151 516 185 516 194 538" fill="#ff5b3d" stroke="#050505" strokeWidth="6" />
-              <circle cx="262" cy="504" r="23" fill="#ff5b3d" stroke="#050505" strokeWidth="6" />
-              <path d="M236 542C245 520 279 520 288 542" fill="#fff8e6" stroke="#050505" strokeWidth="6" />
-              <circle cx="356" cy="500" r="23" fill="#f5c44d" stroke="#050505" strokeWidth="6" />
-              <path d="M330 538C339 516 373 516 382 538" fill="#2cd3c5" stroke="#050505" strokeWidth="6" />
+              <circle cx="168" cy="500" r="23" fill="#0f766e" stroke="#0f172a" strokeWidth="6" />
+              <path d="M142 538C151 516 185 516 194 538" fill="#fb7185" stroke="#0f172a" strokeWidth="6" />
+              <circle cx="262" cy="504" r="23" fill="#fb7185" stroke="#0f172a" strokeWidth="6" />
+              <path d="M236 542C245 520 279 520 288 542" fill="#f3f4f6" stroke="#0f172a" strokeWidth="6" />
+              <circle cx="356" cy="500" r="23" fill="#facc15" stroke="#0f172a" strokeWidth="6" />
+              <path d="M330 538C339 516 373 516 382 538" fill="#0f766e" stroke="#0f172a" strokeWidth="6" />
             </g>
           </svg>
         </div>

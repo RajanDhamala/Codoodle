@@ -118,3 +118,77 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ---- Coloodle light design system: elevation + surfaces ----
+   Three distinct surface steps + five elevation levels, each clearly
+   stronger than the last so hierarchy reads instantly:
+     page (#f6f7f9) > muted inset (#f3f4f6) > raised white (#ffffff)
+     elev-1 (resting) -> elev-2 (panel) -> elev-3 (raised/highlight)
+     -> elev-accent (primary action, teal tint) -> elev-modal (dialog)
+   Cool neutral slate palette, soft layered shadows, no decorative gradients. */
+.elev-1 {
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 1px 2px rgba(15, 23, 42, 0.03);
+}
+.elev-2 {
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.05),
+    0 1px 3px rgba(15, 23, 42, 0.04),
+    0 6px 14px -6px rgba(15, 23, 42, 0.08);
+}
+.elev-3 {
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.06),
+    0 4px 8px -2px rgba(15, 23, 42, 0.05),
+    0 16px 32px -12px rgba(15, 23, 42, 0.14);
+}
+.elev-accent {
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.06),
+    0 2px 6px -1px rgba(15, 118, 110, 0.14),
+    0 10px 24px -8px rgba(15, 118, 110, 0.26);
+}
+.elev-modal {
+  box-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.04),
+    0 6px 14px -4px rgba(15, 23, 42, 0.10),
+    0 28px 60px -16px rgba(15, 23, 42, 0.24);
+}
+.elev-press {
+  transition: box-shadow 0.18s ease, transform 0.18s ease, border-color 0.18s ease;
+}
+.elev-press:hover {
+  transform: translateY(-1px);
+}
+.elev-press:active {
+  transform: translateY(0);
+}
+
+.cld-page {
+  background-color: #f6f7f9;
+}
+.cld-surface {
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+}
+.cld-surface-muted {
+  background-color: #f3f4f6;
+  border: 1px solid #e5e7eb;
+}
+
+/* thin, themed scrollbars for light panels */
+.cld-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.cld-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.cld-scroll::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.28);
+  border-radius: 10px;
+}
+.cld-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(15, 118, 110, 0.36);
+}
