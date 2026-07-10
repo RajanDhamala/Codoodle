@@ -182,6 +182,10 @@ const LobbyPage = () => {
     clearCurrentUser();
     setIsProfileModalOpen(false);
 
+    socketInstance?.disconnect();
+    clearSocketInstance(socketInstance);
+    setSocketInstance(createSocket());
+
     const redirect =
       profileRedirect ?? routeProfileReturnTo ?? readPendingProfileReturn();
     setProfileRedirect(null);

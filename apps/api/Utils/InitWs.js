@@ -132,8 +132,10 @@ const InitWs = async (io) => {
     maxPayloadBytes: getOptionalIntEnv("WS_MAX_PAYLOAD_BYTES", 20000),
     rateLimitWindowMs: getOptionalIntEnv("WS_RATE_LIMIT_WINDOW_MS", 10000),
     maxEventsPerWindow: getOptionalIntEnv("WS_MAX_EVENTS_PER_WINDOW", 80),
+    maxStreamEventsPerWindow: getOptionalIntEnv("WS_MAX_STREAM_EVENTS_PER_WINDOW", 240),
     maxChatMessageLength: getOptionalIntEnv("WS_MAX_CHAT_MESSAGE_LENGTH", 280),
     maxPointsPerSend: getOptionalIntEnv("WS_MAX_POINTS_PER_SEND", 32),
+    maxPointsPerStroke: getOptionalIntEnv("WS_MAX_POINTS_PER_STROKE", 4000),
     hostDisconnectGraceMs: getOptionalIntEnv("WS_HOST_DISCONNECT_GRACE_MS", DEFAULT_HOST_DISCONNECT_GRACE_MS),
   };
 
@@ -171,7 +173,11 @@ const InitWs = async (io) => {
     }
 
     bucket.count += 1;
-    return bucket.count > wsLimits.maxEventsPerWindow;
+    const maxEvents = eventName === "send-stream"
+      ? wsLimits.maxStreamEventsPerWindow
+      : wsLimits.maxEventsPerWindow;
+
+    return bucket.count > maxEvents;
   };
 
   const rejectSocketPacket = (socket, packet, message) => {
@@ -468,6 +474,43 @@ const InitWs = async (io) => {
     io.to(roomId).emit("room-state-updated", getRoomSync(roomId));
   };
 
+  const finalizeActiveStroke = (roomId, requestedFinalPoint = null, options = {}) => {
+    const room = Rooms.get(roomId);
+    const activeStroke = ActiveStrokes.get(roomId);
+    if (!room || !activeStroke) return null;
+
+    const finalPoint = normalizePoint(requestedFinalPoint)
+      || activeStroke.intermediate[activeStroke.intermediate.length - 1]
+      || activeStroke.initial;
+    if (!finalPoint) return null;
+
+    activeStroke.final = finalPoint;
+    activeStroke.strokeNumber = incrementTurnStrokeCount(room, activeStroke.userId);
+
+    if (!GameState.has(roomId)) {
+      GameState.set(roomId, []);
+    }
+    GameState.get(roomId).push(activeStroke);
+    ActiveStrokes.delete(roomId);
+    room.turnSubmittedPlayerId = activeStroke.userId;
+
+    io.to(roomId).emit("recieve-end-stream", {
+      userId: activeStroke.userId,
+      username: activeStroke.username,
+      data: {
+        id: activeStroke.id,
+        roomId,
+        data: finalPoint,
+      },
+    });
+
+    if (options.emitState !== false) {
+      emitRoomState(roomId);
+    }
+
+    return activeStroke;
+  };
+
   const resetRoomToLobby = (roomId) => {
     const room = Rooms.get(roomId);
     if (!room) return;
@@ -635,10 +678,10 @@ const InitWs = async (io) => {
     const room = Rooms.get(roomId);
     if (!room || room.phase !== "drawing") return;
 
+    finalizeActiveStroke(roomId, null, { emitState: false });
     if (shouldCountTurn) {
       room.turnsElapsed += 1;
     }
-    ActiveStrokes.delete(roomId);
 
     if (room.turnsElapsed >= room.totalTurnsBeforeVote) {
       finishDrawingPhase(roomId);
@@ -1145,6 +1188,10 @@ const InitWs = async (io) => {
         emitDrawBlocked(socket, "This stroke is not active anymore.");
         return;
       }
+      if (activeStroke.intermediate.length + points.length > wsLimits.maxPointsPerStroke) {
+        emitDrawBlocked(socket, "This stroke has too many points.");
+        return;
+      }
       activeStroke.intermediate.push(...points)
       socket.to(roomId).emit("recieve-send-stream", {
         userId: user.id,
@@ -1176,26 +1223,7 @@ const InitWs = async (io) => {
         emitDrawBlocked(socket, "This stroke is not active anymore.");
         return;
       }
-      const room = Rooms.get(roomId);
-      if (!room) return;
-      activeStroke.final = finalPoint
-      activeStroke.strokeNumber = incrementTurnStrokeCount(room, user.id);
-      const exists = GameState.get(roomId)
-      if (!exists) {
-        GameState.set(roomId, [])
-      }
-      GameState.get(roomId).push(activeStroke);
-      ActiveStrokes.delete(roomId);
-      room.turnSubmittedPlayerId = user.id;
-      socket.to(roomId).emit("recieve-end-stream", {
-        userId: user.id,
-        username: user.username,
-        data: {
-          ...data,
-          data: finalPoint,
-        },
-      })
-      emitRoomState(roomId);
+      finalizeActiveStroke(roomId, finalPoint);
     })
 
     socket.on("submit-turn", (data, callback) => {

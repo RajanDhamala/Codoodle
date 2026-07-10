@@ -37,6 +37,11 @@ const toolOptions: Array<{
 
 const colorOptions = ["#111827", "#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6", "#64748b"];
 const eraserCursor = "url(\"data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='24'%20height='24'%20viewBox='0%200%2024%2024'%20fill='white'%20stroke='black'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M7%2021h10'/%3E%3Cpath%20d='M20.7%208.7l-5.4-5.4a1%201%200%200%200-1.4%200L3.3%2013.9a1%201%200%200%200%200%201.4L8%2020h4l8.7-8.7a1%201%200%200%200%200-1.4Z'/%3E%3Cpath%20d='M12%206l6%206'/%3E%3C/svg%3E\") 4 20, auto";
+const configuredStreamFlushInterval = Number(import.meta.env.VITE_DRAW_STREAM_THROTTLE_MS);
+const STREAM_FLUSH_INTERVAL_MS = Number.isFinite(configuredStreamFlushInterval)
+  ? Math.min(1000, Math.max(16, Math.round(configuredStreamFlushInterval)))
+  : 50;
+const MAX_POINTS_PER_STREAM_PACKET = 32;
 
 type Points = {
   x: number,
@@ -605,14 +610,12 @@ const GameRoom = () => {
       ctx.strokeStyle = currentStroke.color ?? "black"
       ctx.lineWidth = currentStroke.width ?? 5
       ctx.lineCap = "round"
-      data.data.data.forEach((res) => {
-        const lastPoint = getLastStrokePoint(currentStroke)
-        if (!lastPoint) return
-        if (!isShapeTool(currentStroke.kind)) {
-          drawLineSegment(ctx, lastPoint, res, currentStroke)
-        }
-        currentStroke.intermediate.push(res)
-      })
+      const points = data.data.data
+      const lastPoint = getLastStrokePoint(currentStroke)
+      if (lastPoint && !isShapeTool(currentStroke.kind)) {
+        drawLineSegments(ctx, lastPoint, points, currentStroke)
+      }
+      currentStroke.intermediate.push(...points)
     }
 
     const handleEndStream = (data: RemoteStreamPayload<Points>) => {
@@ -655,6 +658,8 @@ const GameRoom = () => {
 
     if (socketInstance.connected) {
       syncCurrentRoom(Boolean(RoomId))
+    } else {
+      socketInstance.connect()
     }
 
     return () => {
@@ -773,15 +778,10 @@ const GameRoom = () => {
       return
     }
 
-    let lastPoint = activeStroke.initial
-    activeStroke.intermediate.forEach((point) => {
-      drawLineSegment(ctx, lastPoint, point, activeStroke)
-      lastPoint = point
-    })
-
-    if (activeStroke.final) {
-      drawLineSegment(ctx, lastPoint, activeStroke.final, activeStroke)
-    }
+    const points = activeStroke.final
+      ? [...activeStroke.intermediate, activeStroke.final]
+      : activeStroke.intermediate
+    drawLineSegments(ctx, activeStroke.initial, points, activeStroke)
   }
 
   const isUDrawing = useRef(false)
@@ -854,16 +854,7 @@ const GameRoom = () => {
   const throttleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const collectBufferedPoints = (data: Stroke) => {
-    const points: Points[] = []
-    const bufferIndex = bufferRef.current
-
-    data.intermediate.forEach((position, index) => {
-      if (index >= bufferIndex) {
-        points.push(position)
-      }
-    })
-
-    return points
+    return data.intermediate.slice(bufferRef.current)
   }
 
   const clearThrottleTimer = () => {
@@ -874,28 +865,30 @@ const GameRoom = () => {
     isActiveRef.current = false
   }
 
+  const flushBufferedPoints = (data: Stroke) => {
+    const points = collectBufferedPoints(data)
+    if (points.length === 0) {
+      return
+    }
+
+    bufferRef.current = data.intermediate.length
+    SendEventStream(points)
+  }
+
   const Thottler = (data: Stroke) => {
     if (isActiveRef.current) {
       return
     }
-    const arrayLength = data.intermediate.length
-
-    // console.log("buufer index:", bufferIndex, "length:", arrayLength)
-    const duplicated = collectBufferedPoints(data)
-    const bufferLength2send = duplicated.length
-    // console.log("sent length:", bufferLength2send)
-    if (bufferLength2send == 0) {
-      // console.log("not enough stores to emit")
+    if (collectBufferedPoints(data).length === 0) {
       return
     }
 
     isActiveRef.current = true
     throttleTimerRef.current = setTimeout(() => {
-      SendEventStream(duplicated)
-      bufferRef.current = arrayLength
+      flushBufferedPoints(data)
       isActiveRef.current = false
       throttleTimerRef.current = null
-    }, 300)
+    }, STREAM_FLUSH_INTERVAL_MS)
   }
 
   const StartEventStream = (data: StrokeStartPayload) => {
@@ -913,32 +906,26 @@ const GameRoom = () => {
     if (!RoomId || !isValidUuid(RoomId)) {
       return
     }
-    socketInstance?.emit("send-stream", { data, id: activeIdref.current, "roomId": RoomId })
+    for (let index = 0; index < data.length; index += MAX_POINTS_PER_STREAM_PACKET) {
+      socketInstance?.emit("send-stream", {
+        data: data.slice(index, index + MAX_POINTS_PER_STREAM_PACKET),
+        id: activeIdref.current,
+        "roomId": RoomId,
+      })
+    }
   }
 
   const EndEventStream = () => {
     const data = localStrokeRef.current
     clearThrottleTimer()
-
-    const arrayLength = data.intermediate.length
-
-    const duplicated = collectBufferedPoints(data)
-    const bufferLength2send = duplicated.length
-
-    if (bufferLength2send > 0) {
-      bufferRef.current = arrayLength
-
-      socketInstance?.emit("send-stream", {
-        data: duplicated,
-        id: activeIdref.current,
-        "roomId": RoomId
-      })
-    }
-
-    isBlockedref.current = true
     if (!RoomId || !isValidUuid(RoomId)) {
+      isBlockedref.current = true
+      activeIdref.current = null
       return
     }
+
+    flushBufferedPoints(data)
+    isBlockedref.current = true
     socketInstance?.emit("end-stream", {
       data: data.final,
       id: activeIdref.current,
@@ -966,11 +953,26 @@ const GameRoom = () => {
     end: Points,
     stroke: Stroke
   ) => {
+    drawLineSegments(ctx, start, [end], stroke)
+  }
+
+  const drawLineSegments = (
+    ctx: CanvasRenderingContext2D,
+    start: Points,
+    points: Points[],
+    stroke: Stroke
+  ) => {
+    if (points.length === 0) {
+      return
+    }
+
     ctx.save()
     applyStrokeStyle(ctx, stroke)
     ctx.beginPath()
     ctx.moveTo(start.x, start.y)
-    ctx.lineTo(end.x, end.y)
+    points.forEach((point) => {
+      ctx.lineTo(point.x, point.y)
+    })
     ctx.stroke()
     ctx.closePath()
     ctx.restore()
@@ -1281,21 +1283,28 @@ const GameRoom = () => {
     if (!canvas) return
     const ctx = canvas.getContext("2d")
     if (!ctx) return
-    const pos = getMousePos(e)
-    latestStrokePointRef.current = { ...pos }
+    const nativeEvent = e.nativeEvent
+    const coalescedEvents = typeof nativeEvent.getCoalescedEvents === "function"
+      ? nativeEvent.getCoalescedEvents()
+      : []
+    const pointerSamples = coalescedEvents.length > 0 ? coalescedEvents : [nativeEvent]
+    const canvasRect = canvas.getBoundingClientRect()
+    const points = pointerSamples.map((event) => getCanvasPoint(event.clientX, event.clientY, canvasRect))
+    const latestPoint = points[points.length - 1]
+    latestStrokePointRef.current = { ...latestPoint }
 
     if (isShapeTool(localStrokeRef.current.kind)) {
       restoreDraftSnapshot(ctx)
-      drawShapeStroke(ctx, localStrokeRef.current, pos)
+      drawShapeStroke(ctx, localStrokeRef.current, latestPoint)
       return
     }
 
     const lastPoint = localStrokeRef.current.intermediate[localStrokeRef.current.intermediate.length - 1] ?? localStrokeRef.current.initial
     if (lastPoint) {
-      drawLineSegment(ctx, lastPoint, pos, localStrokeRef.current)
+      drawLineSegments(ctx, lastPoint, points, localStrokeRef.current)
     }
 
-    localStrokeRef.current.intermediate.push(pos)
+    localStrokeRef.current.intermediate.push(...points)
     Thottler(localStrokeRef.current)
   }
 
@@ -1382,20 +1391,24 @@ const GameRoom = () => {
     redrawHistoryUntil(nextIndex)
   }
 
-  const getMousePos = (e: React.PointerEvent<HTMLCanvasElement>) => {
+  const getCanvasPoint = (clientX: number, clientY: number, canvasRect?: DOMRect) => {
     const canvas = canvasRef.current!;
-    const rect = canvas.getBoundingClientRect();
+    const rect = canvasRect ?? canvas.getBoundingClientRect();
     const x = rect.width
-      ? ((e.clientX - rect.left) / rect.width) * canvas.width
+      ? ((clientX - rect.left) / rect.width) * canvas.width
       : 0
     const y = rect.height
-      ? ((e.clientY - rect.top) / rect.height) * canvas.height
+      ? ((clientY - rect.top) / rect.height) * canvas.height
       : 0
 
     return {
       x: Math.min(canvas.width, Math.max(0, x)),
       y: Math.min(canvas.height, Math.max(0, y)),
     };
+  };
+
+  const getMousePos = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    return getCanvasPoint(e.clientX, e.clientY)
   };
 
   const getCanvasDisplayPoint = (e: React.PointerEvent<HTMLCanvasElement>) => {
