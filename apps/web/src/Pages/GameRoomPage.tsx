@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { validate as isValidUuid } from "uuid";
 import { createSocket } from "../Utils/socket"
 import useRoomStore from "@/Zustand/RoomStore";
-import { Brush, CheckCircle2, Circle, Clock, Copy, Crown, Eraser, Flame, KeyRound, LogOut, MessageCircle, Minus, MousePointer2, Palette, PartyPopper, Play, RotateCcw, Send, ShieldCheck, Sparkles, Square, Trophy, UserX, Users, Volume2 } from "lucide-react";
+import { Brush, CheckCircle2, Circle, Clock, Copy, Crown, Eraser, Flame, KeyRound, LogOut, MessageCircle, Minus, MousePointer2, Palette, Play, RotateCcw, Send, ShieldCheck, Sparkles, Square, Trophy, UserX, Users, Volume2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
 import type React from "react";
 import useSocketStore from "../SocketStore";
@@ -37,6 +37,19 @@ const toolOptions: Array<{
 
 const colorOptions = ["#111827", "#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6", "#64748b"];
 const eraserCursor = "url(\"data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='24'%20height='24'%20viewBox='0%200%2024%2024'%20fill='white'%20stroke='black'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M7%2021h10'/%3E%3Cpath%20d='M20.7%208.7l-5.4-5.4a1%201%200%200%200-1.4%200L3.3%2013.9a1%201%200%200%200%200%201.4L8%2020h4l8.7-8.7a1%201%200%200%200%200-1.4Z'/%3E%3Cpath%20d='M12%206l6%206'/%3E%3C/svg%3E\") 4 20, auto";
+const configuredStreamFlushInterval = Number(import.meta.env.VITE_DRAW_STREAM_THROTTLE_MS);
+const STREAM_FLUSH_INTERVAL_MS = Number.isFinite(configuredStreamFlushInterval)
+  ? Math.min(1000, Math.max(16, Math.round(configuredStreamFlushInterval)))
+  : 50;
+const MAX_POINTS_PER_STREAM_PACKET = 32;
+
+const showSuccessToast = (message: string, id: string) => {
+  toast.success(message, { id });
+};
+
+const showErrorToast = (message: string, id: string) => {
+  toast.error(message, { id });
+};
 
 type Points = {
   x: number,
@@ -252,6 +265,20 @@ const GameRoom = () => {
     }
   }, [room?.turnEndsAt, room?.votingEndsAt])
 
+  useEffect(() => {
+    const unlockAudio = () => {
+      void unlockResultAudio()
+    }
+
+    window.addEventListener("pointerdown", unlockAudio, { once: true })
+    window.addEventListener("keydown", unlockAudio, { once: true })
+
+    return () => {
+      window.removeEventListener("pointerdown", unlockAudio)
+      window.removeEventListener("keydown", unlockAudio)
+    }
+  }, [])
+
   const LeaveRoom = () => {
     if (!RoomId || !isValidUuid(RoomId)) {
       nagivate("/lobby")
@@ -259,7 +286,7 @@ const GameRoom = () => {
     }
     leavingRoomIdRef.current = RoomId
     socketInstance?.emit("leave-group", { id: RoomId })
-    toast.success("room left successfully!")
+    showSuccessToast("Room left successfully!", "room-leave")
     setRoom(null)
     setMember([])
     setAdmin(null)
@@ -306,7 +333,7 @@ const GameRoom = () => {
     textField.select()
     document.execCommand('copy')
     textField.remove()
-    toast.success("invite link copied")
+    showSuccessToast("Invite link copied", "invite-copy")
   }
 
   const applyMembersSnapshot = (nextMembers: RoomMember[] = [], owner?: RoomMember) => {
@@ -360,67 +387,67 @@ const GameRoom = () => {
 
   const StartGame = () => {
     if (!RoomId || !isValidUuid(RoomId)) {
-      toast.error("Join a room before starting.");
+      showErrorToast("Join a room before starting.", "game-start");
       return;
     }
 
     socketInstance?.emit("start-game", { roomId: RoomId, turnDurationSeconds, maxStrokesPerTurn }, (data: RoomSyncPayload) => {
       if (!data?.success) {
-        toast.error(data?.message || "Failed to start game.");
+        showErrorToast(data?.message || "Failed to start game.", "game-start");
         return;
       }
 
       applyRoomSync(data);
-      toast.success(data.message || "Game started.");
+      showSuccessToast(data.message || "Game started.", "game-start");
     });
   }
 
   const SubmitTurn = () => {
     if (!RoomId || !isValidUuid(RoomId)) {
-      toast.error("Join a room before submitting.");
+      showErrorToast("Join a room before submitting.", "turn-submit");
       return;
     }
 
     socketInstance?.emit("submit-turn", { roomId: RoomId }, (data: RoomSyncPayload) => {
       if (!data?.success) {
-        toast.error(data?.message || "Failed to submit turn.");
+        showErrorToast(data?.message || "Failed to submit turn.", "turn-submit");
         return;
       }
 
       applyRoomSync(data);
-      toast.success(data.message || "Turn submitted.");
+      showSuccessToast(data.message || "Turn submitted.", "turn-submit");
     });
   }
 
   const SubmitVote = (targetId: string) => {
     if (!RoomId || !isValidUuid(RoomId)) {
-      toast.error("Join a room before voting.");
+      showErrorToast("Join a room before voting.", "vote-submit");
       return;
     }
 
     socketInstance?.emit("submit-vote", { roomId: RoomId, targetId }, (data: RoomSyncPayload) => {
       if (!data?.success) {
-        toast.error(data?.message || "Failed to submit vote.");
+        showErrorToast(data?.message || "Failed to submit vote.", "vote-submit");
         return;
       }
 
       applyRoomSync(data);
-      toast.success(data.message || "Vote submitted.");
+      showSuccessToast(data.message || "Vote submitted.", "vote-submit");
     });
   }
 
   const joinRoom = useCallback((id: string, options: { reconnect?: boolean; silent?: boolean } = {}) => {
     const normalizedCode = id.trim()
     if (!normalizedCode) {
-      toast.error("invalid room id");
+      showErrorToast("Invalid room ID", "room-join");
       return;
     }
     if (!isValidUuid(normalizedCode)) {
-      toast.error("invalid room id");
+      showErrorToast("Invalid room ID", "room-join");
       return;
     }
     if (!activeUser || !socketUserPayload) {
-      toast.error("Set up player before joining.");
+      showErrorToast("Set up player before joining.", "room-join");
       return;
     }
     if (!socketInstance?.connected) {
@@ -447,13 +474,13 @@ const GameRoom = () => {
       }
       if (!data?.success) {
         clearSyncedRoom()
-        toast.error(data?.message || "Room not found or expired.");
+        showErrorToast(data?.message || "Room not found or expired.", "room-join");
         return;
       }
 
       applyRoomSync(data)
       if (!options.silent) {
-        toast.success(data.message || "Joined room successfully");
+        showSuccessToast(data.message || "Joined room successfully", "room-join");
       }
     });
   // The room join callback uses ref-backed room state; adding render-local helpers here causes repeated join attempts.
@@ -463,7 +490,7 @@ const GameRoom = () => {
   useEffect(() => {
     if (!isRoomIdValid) {
       clearSyncedRoom()
-      toast.error("invalid room id")
+      showErrorToast("Invalid room ID", "room-join")
       return
     }
 
@@ -476,7 +503,7 @@ const GameRoom = () => {
     const syncCurrentRoom = (reconnect = false) => {
       const roomCode = roomRef.current
       if (!isValidUuid(roomCode)) {
-        toast.error("invlaid uuid")
+        showErrorToast("Invalid room ID", "room-join")
         return;
       }
       if (leavingRoomIdRef.current === roomCode) {
@@ -517,7 +544,7 @@ const GameRoom = () => {
       draftSnapshotRef.current = null
       clearThrottleTimer()
       redrawHistoryUntil(pointerIndexRef.current)
-      toast.error(data.message || "You cannot draw right now.")
+      showErrorToast(data.message || "You cannot draw right now.", "draw-blocked")
     }
 
     const leaveClosedRoom = (data: RoomLifecyclePayload, fallbackMessage: string) => {
@@ -531,7 +558,7 @@ const GameRoom = () => {
         socketInstance.emit("leave-group", { id: eventRoomId })
       }
       clearSyncedRoom()
-      toast.error(data.message || fallbackMessage)
+      showErrorToast(data.message || fallbackMessage, "room-closed")
       nagivate("/lobby")
     }
 
@@ -605,14 +632,12 @@ const GameRoom = () => {
       ctx.strokeStyle = currentStroke.color ?? "black"
       ctx.lineWidth = currentStroke.width ?? 5
       ctx.lineCap = "round"
-      data.data.data.forEach((res) => {
-        const lastPoint = getLastStrokePoint(currentStroke)
-        if (!lastPoint) return
-        if (!isShapeTool(currentStroke.kind)) {
-          drawLineSegment(ctx, lastPoint, res, currentStroke)
-        }
-        currentStroke.intermediate.push(res)
-      })
+      const points = data.data.data
+      const lastPoint = getLastStrokePoint(currentStroke)
+      if (lastPoint && !isShapeTool(currentStroke.kind)) {
+        drawLineSegments(ctx, lastPoint, points, currentStroke)
+      }
+      currentStroke.intermediate.push(...points)
     }
 
     const handleEndStream = (data: RemoteStreamPayload<Points>) => {
@@ -655,6 +680,8 @@ const GameRoom = () => {
 
     if (socketInstance.connected) {
       syncCurrentRoom(Boolean(RoomId))
+    } else {
+      socketInstance.connect()
     }
 
     return () => {
@@ -773,15 +800,10 @@ const GameRoom = () => {
       return
     }
 
-    let lastPoint = activeStroke.initial
-    activeStroke.intermediate.forEach((point) => {
-      drawLineSegment(ctx, lastPoint, point, activeStroke)
-      lastPoint = point
-    })
-
-    if (activeStroke.final) {
-      drawLineSegment(ctx, lastPoint, activeStroke.final, activeStroke)
-    }
+    const points = activeStroke.final
+      ? [...activeStroke.intermediate, activeStroke.final]
+      : activeStroke.intermediate
+    drawLineSegments(ctx, activeStroke.initial, points, activeStroke)
   }
 
   const isUDrawing = useRef(false)
@@ -854,16 +876,7 @@ const GameRoom = () => {
   const throttleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const collectBufferedPoints = (data: Stroke) => {
-    const points: Points[] = []
-    const bufferIndex = bufferRef.current
-
-    data.intermediate.forEach((position, index) => {
-      if (index >= bufferIndex) {
-        points.push(position)
-      }
-    })
-
-    return points
+    return data.intermediate.slice(bufferRef.current)
   }
 
   const clearThrottleTimer = () => {
@@ -874,28 +887,30 @@ const GameRoom = () => {
     isActiveRef.current = false
   }
 
+  const flushBufferedPoints = (data: Stroke) => {
+    const points = collectBufferedPoints(data)
+    if (points.length === 0) {
+      return
+    }
+
+    bufferRef.current = data.intermediate.length
+    SendEventStream(points)
+  }
+
   const Thottler = (data: Stroke) => {
     if (isActiveRef.current) {
       return
     }
-    const arrayLength = data.intermediate.length
-
-    // console.log("buufer index:", bufferIndex, "length:", arrayLength)
-    const duplicated = collectBufferedPoints(data)
-    const bufferLength2send = duplicated.length
-    // console.log("sent length:", bufferLength2send)
-    if (bufferLength2send == 0) {
-      // console.log("not enough stores to emit")
+    if (collectBufferedPoints(data).length === 0) {
       return
     }
 
     isActiveRef.current = true
     throttleTimerRef.current = setTimeout(() => {
-      SendEventStream(duplicated)
-      bufferRef.current = arrayLength
+      flushBufferedPoints(data)
       isActiveRef.current = false
       throttleTimerRef.current = null
-    }, 300)
+    }, STREAM_FLUSH_INTERVAL_MS)
   }
 
   const StartEventStream = (data: StrokeStartPayload) => {
@@ -913,32 +928,26 @@ const GameRoom = () => {
     if (!RoomId || !isValidUuid(RoomId)) {
       return
     }
-    socketInstance?.emit("send-stream", { data, id: activeIdref.current, "roomId": RoomId })
+    for (let index = 0; index < data.length; index += MAX_POINTS_PER_STREAM_PACKET) {
+      socketInstance?.emit("send-stream", {
+        data: data.slice(index, index + MAX_POINTS_PER_STREAM_PACKET),
+        id: activeIdref.current,
+        "roomId": RoomId,
+      })
+    }
   }
 
   const EndEventStream = () => {
     const data = localStrokeRef.current
     clearThrottleTimer()
-
-    const arrayLength = data.intermediate.length
-
-    const duplicated = collectBufferedPoints(data)
-    const bufferLength2send = duplicated.length
-
-    if (bufferLength2send > 0) {
-      bufferRef.current = arrayLength
-
-      socketInstance?.emit("send-stream", {
-        data: duplicated,
-        id: activeIdref.current,
-        "roomId": RoomId
-      })
-    }
-
-    isBlockedref.current = true
     if (!RoomId || !isValidUuid(RoomId)) {
+      isBlockedref.current = true
+      activeIdref.current = null
       return
     }
+
+    flushBufferedPoints(data)
+    isBlockedref.current = true
     socketInstance?.emit("end-stream", {
       data: data.final,
       id: activeIdref.current,
@@ -966,11 +975,26 @@ const GameRoom = () => {
     end: Points,
     stroke: Stroke
   ) => {
+    drawLineSegments(ctx, start, [end], stroke)
+  }
+
+  const drawLineSegments = (
+    ctx: CanvasRenderingContext2D,
+    start: Points,
+    points: Points[],
+    stroke: Stroke
+  ) => {
+    if (points.length === 0) {
+      return
+    }
+
     ctx.save()
     applyStrokeStyle(ctx, stroke)
     ctx.beginPath()
     ctx.moveTo(start.x, start.y)
-    ctx.lineTo(end.x, end.y)
+    points.forEach((point) => {
+      ctx.lineTo(point.x, point.y)
+    })
     ctx.stroke()
     ctx.closePath()
     ctx.restore()
@@ -1182,7 +1206,7 @@ const GameRoom = () => {
     }
 
     if (!canDraw) {
-      toast.error(drawBlockMessage)
+      showErrorToast(drawBlockMessage, "draw-blocked")
       return
     }
 
@@ -1281,21 +1305,28 @@ const GameRoom = () => {
     if (!canvas) return
     const ctx = canvas.getContext("2d")
     if (!ctx) return
-    const pos = getMousePos(e)
-    latestStrokePointRef.current = { ...pos }
+    const nativeEvent = e.nativeEvent
+    const coalescedEvents = typeof nativeEvent.getCoalescedEvents === "function"
+      ? nativeEvent.getCoalescedEvents()
+      : []
+    const pointerSamples = coalescedEvents.length > 0 ? coalescedEvents : [nativeEvent]
+    const canvasRect = canvas.getBoundingClientRect()
+    const points = pointerSamples.map((event) => getCanvasPoint(event.clientX, event.clientY, canvasRect))
+    const latestPoint = points[points.length - 1]
+    latestStrokePointRef.current = { ...latestPoint }
 
     if (isShapeTool(localStrokeRef.current.kind)) {
       restoreDraftSnapshot(ctx)
-      drawShapeStroke(ctx, localStrokeRef.current, pos)
+      drawShapeStroke(ctx, localStrokeRef.current, latestPoint)
       return
     }
 
     const lastPoint = localStrokeRef.current.intermediate[localStrokeRef.current.intermediate.length - 1] ?? localStrokeRef.current.initial
     if (lastPoint) {
-      drawLineSegment(ctx, lastPoint, pos, localStrokeRef.current)
+      drawLineSegments(ctx, lastPoint, points, localStrokeRef.current)
     }
 
-    localStrokeRef.current.intermediate.push(pos)
+    localStrokeRef.current.intermediate.push(...points)
     Thottler(localStrokeRef.current)
   }
 
@@ -1382,20 +1413,24 @@ const GameRoom = () => {
     redrawHistoryUntil(nextIndex)
   }
 
-  const getMousePos = (e: React.PointerEvent<HTMLCanvasElement>) => {
+  const getCanvasPoint = (clientX: number, clientY: number, canvasRect?: DOMRect) => {
     const canvas = canvasRef.current!;
-    const rect = canvas.getBoundingClientRect();
+    const rect = canvasRect ?? canvas.getBoundingClientRect();
     const x = rect.width
-      ? ((e.clientX - rect.left) / rect.width) * canvas.width
+      ? ((clientX - rect.left) / rect.width) * canvas.width
       : 0
     const y = rect.height
-      ? ((e.clientY - rect.top) / rect.height) * canvas.height
+      ? ((clientY - rect.top) / rect.height) * canvas.height
       : 0
 
     return {
       x: Math.min(canvas.width, Math.max(0, x)),
       y: Math.min(canvas.height, Math.max(0, y)),
     };
+  };
+
+  const getMousePos = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    return getCanvasPoint(e.clientX, e.clientY)
   };
 
   const getCanvasDisplayPoint = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -1427,6 +1462,8 @@ const GameRoom = () => {
   const isResultPhase = room?.phase === "results";
   const currentPlayer = visibleMembers.find((member) => member.id === room?.currentPlayerId);
   const isMyTurn = Boolean(activeUser?.id && room?.currentPlayerId === activeUser.id);
+  const currentPlayerName = currentPlayer?.username || (isMyTurn ? activeUser?.username : "Player") || "Player";
+  const currentPlayerAvatar = currentPlayer?.avatarCode || (isMyTurn ? socketUserPayload?.avatarCode : undefined);
   const hasSubmittedThisTurn = Boolean(activeUser?.id && room?.turnSubmittedPlayerId === activeUser.id);
   const currentTurnStrokeCount = Number(room?.currentTurnStrokeCount || 0);
   const strokesRemaining = Math.max(0, maxStrokesPerTurn - currentTurnStrokeCount);
@@ -1622,12 +1659,40 @@ const GameRoom = () => {
 
           {hasStarted ? (
             <>
-              <Panel className="relative overflow-hidden border-2 border-[#0f172a] p-3 elev-3">
+              <Panel className={`relative overflow-hidden border-2 p-3 transition-[border-color,box-shadow] duration-200 ${isMyTurn
+                ? "!border-2 !border-[#22c55e] ring-2 ring-[#86efac] shadow-[0_12px_30px_rgba(22,163,74,0.16)]"
+                : "border-[#0f172a] elev-3"
+                }`}>
+                <div className="mb-3 flex">
+                  <div className={`inline-flex min-w-0 max-w-full items-center gap-2 rounded-full border py-1.5 pl-1.5 pr-3 elev-1 ${isMyTurn
+                    ? "border-[#22c55e] bg-[#dcfce7] shadow-[0_0_0_3px_rgba(34,197,94,0.14)]"
+                    : "border-[#e5e7eb] bg-white"
+                    }`}>
+                    <AvatarBadge
+                      avatar={currentPlayerAvatar}
+                      name={currentPlayerName}
+                      className="h-8 w-8 rounded-full"
+                    />
+                    <span className="min-w-0 truncate text-sm font-bold text-[#0f172a]">
+                      {currentPlayerName}
+                    </span>
+                    {isMyTurn ? (
+                      <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold text-[#166534]">
+                        <span className="h-3 w-3 animate-pulse rounded-full bg-[#16a34a] ring-2 ring-white shadow-[0_0_0_3px_rgba(22,163,74,0.22)]" />
+                        Your turn
+                      </span>
+                    ) : (
+                      <span className="shrink-0 text-xs font-medium text-[#64748b]">Drawing</span>
+                    )}
+                  </div>
+                </div>
+
                 <div className="relative mx-auto w-full max-w-[860px] overflow-hidden rounded-xl bg-white">
                   <canvas
                     ref={canvasRef}
-                    className="block h-auto w-full bg-white"
+                    className="block h-[72vw] min-h-[300px] max-h-[380px] w-full bg-white sm:h-auto sm:min-h-0 sm:max-h-none"
                     style={{ cursor: canvasCursor, touchAction: hasStarted ? "none" : "auto" }}
+                    aria-label={`${currentPlayerName} drawing canvas`}
                     onPointerDown={onMouseDown}
                     height={500}
                     width={800}
@@ -1800,7 +1865,14 @@ const GameRoom = () => {
             </Panel>
           ) : null}
 
-          {isResultPhase && room?.result ? <ResultsPanel result={room.result} /> : null}
+          {isResultPhase && room?.result ? (
+            <ResultsPanel
+              result={room.result}
+              activeUserId={activeUser?.id}
+              players={room.players || visibleMembers}
+              onLeave={LeaveRoom}
+            />
+          ) : null}
         </section>
 
         <aside className="order-3 space-y-4">
@@ -2392,9 +2464,16 @@ const VotingModal = ({
   </div>
 );
 
-const playResultRevealSound = (artistsWin: boolean) => {
+const lastResultSound = {
+  key: "",
+  playedAt: 0,
+}
+
+let resultAudioContext: AudioContext | null = null
+
+const getResultAudioContext = () => {
   if (typeof window === "undefined") {
-    return
+    return null
   }
 
   const AudioContextCtor =
@@ -2402,18 +2481,44 @@ const playResultRevealSound = (artistsWin: boolean) => {
     (window as Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
 
   if (!AudioContextCtor) {
+    return null
+  }
+
+  resultAudioContext ||= new AudioContextCtor()
+  return resultAudioContext
+}
+
+const unlockResultAudio = async () => {
+  const audioContext = getResultAudioContext()
+  if (audioContext?.state === "suspended") {
+    await audioContext.resume()
+  }
+}
+
+const playResultRevealSound = (didWin: boolean, soundKey: string, force = false) => {
+  const now = Date.now()
+  if (!force && lastResultSound.key === soundKey && now - lastResultSound.playedAt < 2000) {
+    return
+  }
+
+  const audioContext = getResultAudioContext()
+  if (!audioContext) {
     return
   }
 
   try {
-    const audioContext = new AudioContextCtor()
+    void unlockResultAudio()
     const masterGain = audioContext.createGain()
     const startTime = audioContext.currentTime
-    const notes = artistsWin ? [523.25, 659.25, 783.99, 1046.5] : [392, 466.16, 587.33, 784]
+    const notes = didWin ? [523.25, 659.25, 783.99, 1046.5] : [392, 329.63, 261.63]
+    const soundDuration = didWin ? 1.05 : 0.9
+
+    lastResultSound.key = soundKey
+    lastResultSound.playedAt = now
 
     masterGain.gain.setValueAtTime(0.0001, startTime)
-    masterGain.gain.exponentialRampToValueAtTime(0.12, startTime + 0.04)
-    masterGain.gain.exponentialRampToValueAtTime(0.0001, startTime + 1.05)
+    masterGain.gain.exponentialRampToValueAtTime(0.32, startTime + 0.04)
+    masterGain.gain.exponentialRampToValueAtTime(0.0001, startTime + soundDuration)
     masterGain.connect(audioContext.destination)
 
     notes.forEach((frequency, index) => {
@@ -2421,10 +2526,10 @@ const playResultRevealSound = (artistsWin: boolean) => {
       const noteGain = audioContext.createGain()
       const noteStart = startTime + index * 0.12
 
-      oscillator.type = index % 2 === 0 ? "triangle" : "sine"
+      oscillator.type = didWin ? (index % 2 === 0 ? "triangle" : "sine") : "triangle"
       oscillator.frequency.setValueAtTime(frequency, noteStart)
       noteGain.gain.setValueAtTime(0.0001, noteStart)
-      noteGain.gain.exponentialRampToValueAtTime(0.18, noteStart + 0.02)
+      noteGain.gain.exponentialRampToValueAtTime(didWin ? 0.36 : 0.3, noteStart + 0.02)
       noteGain.gain.exponentialRampToValueAtTime(0.0001, noteStart + 0.32)
       oscillator.connect(noteGain)
       noteGain.connect(masterGain)
@@ -2432,267 +2537,214 @@ const playResultRevealSound = (artistsWin: boolean) => {
       oscillator.stop(noteStart + 0.36)
     })
 
-    void audioContext.resume()
     window.setTimeout(() => {
-      void audioContext.close()
+      masterGain.disconnect()
     }, 1300)
   } catch {
     // Browsers can block audio until the user interacts with the page.
   }
 }
 
-const ResultsPanel = ({ result }: { result: GameResult }) => {
-  const topVotes = Math.max(0, ...result.voteCounts.map((count) => count.votes))
-  const sortedVotes = [...result.voteCounts].sort((first, second) => second.votes - first.votes)
-  const artistNames = result.voteCounts
-    .filter((count) => count.playerId !== result.imposterId)
-    .map((count) => count.playerName)
-  const winnerNames = result.artistsWin
-    ? artistNames
-    : [result.imposterName]
-  const visibleWinnerNames = winnerNames.slice(0, 4)
-  const hiddenWinnerCount = Math.max(0, winnerNames.length - visibleWinnerNames.length)
-  const revealLine = result.artistsWin
-    ? `${result.imposterName} was exposed.`
-    : result.selectedTargetName
-      ? `The imposter escaped while ${result.selectedTargetName} took the fall.`
-      : "The imposter escaped because no clear majority found them."
-
-  useEffect(() => {
-    playResultRevealSound(result.artistsWin)
-  }, [result.artistsWin, result.imposterId, result.selectedTargetId])
-
-  return (
-    <section className="overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white elev-2">
-      <div className="relative min-h-[360px] overflow-hidden border-b border-[#e5e7eb] bg-[#f3f4f6]">
-        <ResultCelebrationSvg artistsWin={result.artistsWin} />
-        <div className="absolute inset-0 flex flex-col justify-between p-5 sm:p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-semibold ${result.artistsWin
-              ? "border-[#bbf7d0] bg-[#ecfdf5] text-[#047857]"
-              : "border-[#f5d0fe] bg-[#fdf4ff] text-[#a21caf]"
-              }`}>
-              {result.artistsWin ? <ShieldCheck className="h-4 w-4" /> : <KeyRound className="h-4 w-4" />}
-              {result.artistsWin ? "Artists win" : "Imposter wins"}
-            </div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#e5e7eb] bg-white px-3 py-2 text-sm font-medium text-[#334155]">
-              <Volume2 className="h-4 w-4 text-[#0f766e]" />
-              Reveal
-            </div>
-          </div>
-
-          <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#fde68a] bg-[#fffbeb] px-3 py-2 text-sm font-semibold text-[#92400e]">
-              <PartyPopper className="h-4 w-4" />
-              Final result
-            </div>
-            <h2 className="mt-4 text-3xl font-bold leading-tight text-[#0f172a] sm:text-5xl">
-              {result.artistsWin ? "The artists caught the imposter" : "The imposter escaped"}
-            </h2>
-            <p className="mt-3 max-w-xl text-sm leading-6 text-[#475569] sm:text-base">
-              {revealLine} The word was{" "}
-              <span className="font-semibold text-[#0f172a]">{result.word}</span>{" "}
-              in <span className="font-semibold text-[#0f172a]">{result.category}</span>.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <ResultSideCard
-              title="Artists side"
-              status={result.artistsWin ? "Winners" : "Missed the imposter"}
-              description={
-                result.artistsWin
-                  ? `${result.imposterName} was voted out.`
-                  : result.selectedTargetName
-                    ? `${result.selectedTargetName} was voted out instead.`
-                    : "No majority, so the imposter stayed hidden."
-              }
-              names={artistNames}
-              active={result.artistsWin}
-              tone="emerald"
-            />
-            <ResultSideCard
-              title="Imposter side"
-              status={result.artistsWin ? "Caught" : "Winner escaped"}
-              description={
-                result.artistsWin
-                  ? `${result.imposterName} got exposed by the vote.`
-                  : `${result.imposterName} escaped and wins this round.`
-              }
-              names={[result.imposterName]}
-              active={!result.artistsWin}
-              tone="fuchsia"
-            />
-          </div>
-
-          <div className="rounded-2xl border border-[#e5e7eb] bg-[#f3f4f6] p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium text-[#64748b]">Winner{winnerNames.length === 1 ? "" : "s"}</p>
-                <h3 className="mt-1 text-xl font-bold text-[#0f172a]">
-                  {result.artistsWin ? "Artists team" : result.imposterName}
-                </h3>
-              </div>
-              <Sparkles className={`h-6 w-6 ${result.artistsWin ? "text-[#10b981]" : "text-[#c026d3]"}`} />
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {visibleWinnerNames.map((name) => (
-                <span
-                  key={name}
-                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-semibold ${result.artistsWin
-                    ? "border-[#bbf7d0] bg-[#ecfdf5] text-[#047857]"
-                    : "border-[#f5d0fe] bg-[#fdf4ff] text-[#a21caf]"
-                    }`}
-                >
-                  <Trophy className="h-4 w-4" />
-                  {name}
-                </span>
-              ))}
-              {hiddenWinnerCount > 0 ? (
-                <span className="rounded-full border border-[#e5e7eb] bg-white px-3 py-2 text-sm font-semibold text-[#334155]">
-                  +{hiddenWinnerCount} more
-                </span>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-3">
-            <ResultStat label="Imposter" value={result.imposterName} tone={result.artistsWin ? "emerald" : "fuchsia"} />
-            <ResultStat label="Voted out" value={result.selectedTargetName || "No majority"} tone="neutral" />
-            <ResultStat label="Top votes" value={`${topVotes}`} tone="amber" />
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-[#e5e7eb] bg-[#f3f4f6] p-4">
-          <div className="flex items-center justify-between gap-3">
-            <h3 className="font-bold text-[#0f172a]">Vote board</h3>
-            <span className="rounded-full border border-[#e5e7eb] bg-white px-2 py-1 text-xs font-semibold text-[#334155]">
-              {result.voteCounts.length}
-            </span>
-          </div>
-          <div className="mt-4 space-y-2">
-            {sortedVotes.map((count) => {
-              const votePercent = topVotes > 0 ? Math.round((count.votes / topVotes) * 100) : 0
-              const isImposter = count.playerId === result.imposterId
-
-              return (
-                <div
-                  key={count.playerId}
-                  className={`rounded-xl border p-3 ${isImposter
-                    ? "border-[#fde68a] bg-[#fffbeb]"
-                    : "border-[#e5e7eb] bg-white"
-                    }`}
-                >
-                  <div className="flex items-center justify-between gap-3 text-sm">
-                    <span className="min-w-0 truncate font-semibold text-[#0f172a]">{count.playerName}</span>
-                    <span className="shrink-0 font-bold text-[#0f172a]">{count.votes}</span>
-                  </div>
-                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#e5e7eb]">
-                    <div
-                      className={`h-full rounded-full ${isImposter ? "bg-[#f59e0b]" : "bg-[#0f172a]"}`}
-                      style={{ width: `${votePercent}%` }}
-                    />
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      </div>
-    </section>
-  )
+type ResultPlayerView = {
+  id: string;
+  username: string;
+  avatarCode?: string;
 }
 
-const ResultStat = ({
-  label,
-  value,
-  tone,
+const ResultsPanel = ({
+  result,
+  activeUserId,
+  players,
+  onLeave,
 }: {
-  label: string;
-  value: string;
-  tone: "emerald" | "fuchsia" | "neutral" | "amber";
+  result: GameResult;
+  activeUserId?: string;
+  players: RoomMember[];
+  onLeave: () => void;
 }) => {
-  const toneClass = {
-    emerald: "border-[#bbf7d0] bg-[#ecfdf5] text-[#047857]",
-    fuchsia: "border-[#f5d0fe] bg-[#fdf4ff] text-[#a21caf]",
-    neutral: "border-[#e5e7eb] bg-white text-[#334155]",
-    amber: "border-[#fde68a] bg-[#fffbeb] text-[#92400e]",
-  }[tone]
+  const playerById = new Map(players.map((player) => [player.id, player]))
+  const participantIds = Array.from(new Set([
+    ...result.voteCounts.map((count) => count.playerId),
+    result.imposterId,
+  ]))
+  const resultPlayers: ResultPlayerView[] = participantIds.map((playerId) => {
+    const roomPlayer = playerById.get(playerId)
+    const votePlayer = result.voteCounts.find((count) => count.playerId === playerId)
+
+    return {
+      id: playerId,
+      username: roomPlayer?.username || votePlayer?.playerName || (playerId === result.imposterId ? result.imposterName : "Player"),
+      avatarCode: roomPlayer?.avatarCode,
+    }
+  })
+  const imposterPlayer = resultPlayers.find((player) => player.id === result.imposterId) || {
+    id: result.imposterId,
+    username: result.imposterName,
+  }
+  const artistPlayers = resultPlayers.filter((player) => player.id !== result.imposterId)
+  const hasPersonalOutcome = Boolean(activeUserId && resultPlayers.some((player) => player.id === activeUserId))
+  const isCurrentUserImposter = Boolean(hasPersonalOutcome && activeUserId === result.imposterId)
+  const didCurrentUserWin = hasPersonalOutcome
+    ? isCurrentUserImposter ? !result.artistsWin : result.artistsWin
+    : result.artistsWin
+  const outcomeLabel = didCurrentUserWin ? "Victory" : "Defeat"
+  const outcomeTitle = !hasPersonalOutcome
+    ? result.artistsWin ? "The artist team won" : "The imposter won"
+    : isCurrentUserImposter
+      ? didCurrentUserWin ? "You escaped!" : "You were caught"
+      : didCurrentUserWin ? "Your team won!" : "Your team lost"
+  const outcomeDescription = !hasPersonalOutcome
+    ? result.artistsWin
+      ? `${result.imposterName} was identified as the imposter.`
+      : `${result.imposterName} stayed hidden until the end.`
+    : isCurrentUserImposter
+      ? didCurrentUserWin
+        ? "The artists did not find you."
+        : "The artists found you."
+      : didCurrentUserWin
+        ? `${result.imposterName} was caught. The artists win together.`
+        : `${result.imposterName} escaped. The artists lose together.`
+  const displayedPlayers = isCurrentUserImposter ? [imposterPlayer] : artistPlayers
+  const displayedTeamTitle = isCurrentUserImposter ? "You · Imposter" : "Your artist team"
+  const soundKey = `${activeUserId || "spectator"}:${result.imposterId}:${result.selectedTargetId || "none"}:${result.artistsWin}:${result.word}`
+
+  useEffect(() => {
+    playResultRevealSound(didCurrentUserWin, soundKey)
+  }, [didCurrentUserWin, soundKey])
 
   return (
-    <div className={`rounded-2xl border p-4 ${toneClass}`}>
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] opacity-70">{label}</p>
-      <p className="mt-2 truncate text-lg font-bold">{value}</p>
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-[#0f172a]/55 p-3 backdrop-blur-sm sm:p-6"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="game-result-title"
+    >
+      <section className="cld-scroll max-h-[94svh] w-full max-w-lg overflow-y-auto rounded-[26px] border border-white/70 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.32)]">
+        <div className={`relative h-36 overflow-hidden border-b ${didCurrentUserWin
+          ? "border-[#86efac] bg-[#ecfdf5]"
+          : "border-[#fecdd3] bg-[#fff1f2]"
+          }`}>
+          <ResultCelebrationSvg artistsWin={didCurrentUserWin} />
+        </div>
+
+        <div className="p-5 text-center sm:p-6">
+          <div className={`mx-auto inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-bold ${didCurrentUserWin
+            ? "border-[#4ade80] bg-[#ecfdf5] text-[#15803d]"
+            : "border-[#fb7185] bg-[#fff1f2] text-[#be123c]"
+            }`}>
+            {didCurrentUserWin ? <Trophy className="h-4 w-4" /> : <UserX className="h-4 w-4" />}
+            {outcomeLabel}
+          </div>
+          <h2 id="game-result-title" className="mt-3 text-2xl font-bold tracking-[-0.02em] text-[#0f172a] sm:text-3xl">
+            {outcomeTitle}
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-[#64748b]">{outcomeDescription}</p>
+
+          <div className="mt-5 text-left">
+            <ResultTeamCard
+              title={displayedTeamTitle}
+              players={displayedPlayers}
+              activeUserId={activeUserId}
+              isWinner={didCurrentUserWin}
+              team={isCurrentUserImposter ? "imposter" : "artists"}
+            />
+          </div>
+        </div>
+
+        <footer className="flex flex-col-reverse gap-2 border-t border-[#e5e7eb] bg-[#f8fafc] p-4 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={() => playResultRevealSound(didCurrentUserWin, soundKey, true)}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#cbd5e1] bg-white px-4 py-2.5 text-sm font-semibold text-[#334155] transition hover:border-[#64748b]"
+          >
+            <Volume2 className="h-4 w-4" />
+            Play sound
+          </button>
+          <button
+            type="button"
+            onClick={onLeave}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0f172a] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#334155]"
+          >
+            <LogOut className="h-4 w-4" />
+            Back to lobby
+          </button>
+        </footer>
+      </section>
     </div>
   )
 }
 
-const ResultSideCard = ({
+const ResultTeamCard = ({
   title,
-  status,
-  description,
-  names,
-  active,
-  tone,
+  players,
+  activeUserId,
+  isWinner,
+  team,
 }: {
   title: string;
-  status: string;
-  description: string;
-  names: string[];
-  active: boolean;
-  tone: "emerald" | "fuchsia";
+  players: ResultPlayerView[];
+  activeUserId?: string;
+  isWinner: boolean;
+  team: "artists" | "imposter";
 }) => {
-  const visibleNames = names.slice(0, 3)
-  const hiddenCount = Math.max(0, names.length - visibleNames.length)
-  const activeClass = tone === "emerald"
-    ? "border-[#bbf7d0] bg-[#ecfdf5] shadow-[0_8px_28px_-12px_rgba(16,185,129,0.35)]"
-    : "border-[#f5d0fe] bg-[#fdf4ff] shadow-[0_8px_28px_-12px_rgba(192,38,213,0.30)]"
-  const idleClass = "border-[#e5e7eb] bg-[#f3f4f6] opacity-80"
-  const iconClass = tone === "emerald" ? "text-[#10b981]" : "text-[#c026d3]"
-
   return (
-    <div className={`rounded-2xl border p-4 transition ${active ? activeClass : idleClass}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium text-[#64748b]">{title}</p>
-          <h3 className="mt-1 text-lg font-bold text-[#0f172a]">{status}</h3>
+    <div className={`rounded-2xl border p-4 ${isWinner
+      ? "border-[#4ade80] bg-[#ecfdf5]"
+      : "border-[#fecdd3] bg-[#fff7f8]"
+      }`}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className={`text-xs font-bold uppercase tracking-[0.12em] ${isWinner ? "text-[#15803d]" : "text-[#be123c]"}`}>
+            {isWinner ? "Winning team" : "Lost this round"}
+          </p>
+          <h4 className="mt-1 truncate text-lg font-bold text-[#0f172a]">{title}</h4>
         </div>
-        <div className={`rounded-xl border border-[#e5e7eb] bg-white p-2 ${iconClass}`}>
-          {tone === "emerald" ? <ShieldCheck className="h-5 w-5" /> : <KeyRound className="h-5 w-5" />}
+        <div className={`rounded-xl border bg-white p-2 ${isWinner
+          ? "border-[#86efac] text-[#16a34a]"
+          : "border-[#fecdd3] text-[#e11d48]"
+          }`}>
+          {isWinner
+            ? <Sparkles className="h-5 w-5" />
+            : team === "artists" ? <ShieldCheck className="h-5 w-5" /> : <KeyRound className="h-5 w-5" />}
         </div>
       </div>
-      <p className="mt-3 min-h-10 text-sm leading-5 text-[#475569]">{description}</p>
-      <div className="mt-4 flex flex-wrap gap-2">
-        {visibleNames.map((name) => (
-          <span
-            key={`${title}-${name}`}
-            className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${active
-              ? tone === "emerald"
-                ? "border-[#a7f3d0] bg-white text-[#047857]"
-                : "border-[#f5d0fe] bg-white text-[#a21caf]"
-              : "border-[#e5e7eb] bg-white text-[#64748b]"
-              }`}
-          >
-            {name}
-          </span>
-        ))}
-        {hiddenCount > 0 ? (
-          <span className="rounded-full border border-[#e5e7eb] bg-white px-3 py-1.5 text-xs font-semibold text-[#64748b]">
-            +{hiddenCount}
-          </span>
-        ) : null}
+
+      <div className="mt-4 space-y-2">
+        {players.map((player) => {
+          const isCurrentUser = player.id === activeUserId
+
+          return (
+            <div
+              key={`${title}-${player.id}`}
+              className="flex items-center gap-3 rounded-xl border border-white bg-white/85 p-2"
+            >
+              <AvatarBadge
+                avatar={player.avatarCode}
+                name={player.username}
+                className="h-9 w-9 rounded-xl"
+              />
+              <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[#0f172a]">
+                {player.username}
+              </span>
+              {isCurrentUser ? (
+                <span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-bold ${isWinner
+                  ? "bg-[#dcfce7] text-[#166534]"
+                  : "bg-[#ffe4e6] text-[#9f1239]"
+                  }`}>
+                  You
+                </span>
+              ) : null}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
 }
 
 const ResultCelebrationSvg = ({ artistsWin }: { artistsWin: boolean }) => {
-  const accent = artistsWin ? "#10b981" : "#0f766e"
-  const accentDark = artistsWin ? "#047857" : "#134e4a"
+  const accent = artistsWin ? "#10b981" : "#fb7185"
+  const accentDark = artistsWin ? "#047857" : "#be123c"
 
   return (
     <svg
@@ -2731,7 +2783,7 @@ const ResultCelebrationSvg = ({ artistsWin }: { artistsWin: boolean }) => {
       </path>
 
       {[80, 160, 252, 698, 778, 842].map((x, index) => (
-        <g key={`result-confetti-${index}`} opacity="0.9">
+        <g key={`result-confetti-${index}`} opacity={artistsWin ? "0.9" : "0.12"}>
           <animateTransform
             attributeName="transform"
             dur={`${2.6 + index * 0.22}s`}
@@ -2758,7 +2810,7 @@ const ResultCelebrationSvg = ({ artistsWin }: { artistsWin: boolean }) => {
         </g>
       ))}
 
-      <g filter="url(#result-soft-shadow)">
+      <g filter="url(#result-soft-shadow)" opacity={artistsWin ? "1" : "0.12"}>
         <ellipse cx="450" cy="316" rx="178" ry="28" fill="#0f172a" opacity="0.10" />
         <path
           d="M294 116 C314 178 350 220 410 226 L410 254 L374 276 L526 276 L490 254 L490 226 C550 220 586 178 606 116 L546 116 C536 148 512 170 490 176 L490 98 L410 98 L410 176 C388 170 364 148 354 116 Z"
@@ -2815,7 +2867,7 @@ const ResultCelebrationSvg = ({ artistsWin }: { artistsWin: boolean }) => {
       </g>
 
       {[302, 598].map((x, index) => (
-        <g key={`result-spark-${index}`}>
+        <g key={`result-spark-${index}`} opacity={artistsWin ? "1" : "0.18"}>
           <path
             d={`M${x} 72 L${x + 10} 100 L${x + 40} 108 L${x + 10} 118 L${x} 146 L${x - 10} 118 L${x - 40} 108 L${x - 10} 100 Z`}
             fill={index === 0 ? "#0f766e" : "#facc15"}

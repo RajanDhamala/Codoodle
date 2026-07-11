@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { memo, useMemo, type CSSProperties } from "react";
 import { sanitizeAvatarConfig, type AvatarConfig } from "../Utils/guestProfile";
 
 type AvatarDimension = number | string;
@@ -6,7 +6,7 @@ type AvatarDimension = number | string;
 const getAvatarDimension = (value: AvatarDimension) =>
   typeof value === "number" ? `${value}px` : value;
 
-export const AvatarBadge = ({
+export const AvatarBadge = memo(function AvatarBadge({
   avatar,
   name,
   className = "h-10 w-10",
@@ -14,8 +14,8 @@ export const AvatarBadge = ({
   avatar?: AvatarConfig | string;
   name?: string;
   className?: string;
-}) => {
-  const safeAvatar = sanitizeAvatarConfig(avatar);
+}) {
+  const safeAvatar = useMemo(() => sanitizeAvatarConfig(avatar), [avatar]);
 
   return (
     <span
@@ -26,9 +26,9 @@ export const AvatarBadge = ({
       <AvatarSvg avatar={safeAvatar} />
     </span>
   );
-};
+});
 
-export const AvatarFromCode = ({
+export const AvatarFromCode = memo(function AvatarFromCode({
   avatarCode,
   name,
   width = 64,
@@ -40,8 +40,8 @@ export const AvatarFromCode = ({
   width?: AvatarDimension;
   height?: AvatarDimension;
   className?: string;
-}) => {
-  const safeAvatar = sanitizeAvatarConfig(avatarCode);
+}) {
+  const safeAvatar = useMemo(() => sanitizeAvatarConfig(avatarCode), [avatarCode]);
   const style: CSSProperties = {
     width: getAvatarDimension(width),
     height: getAvatarDimension(height),
@@ -57,9 +57,9 @@ export const AvatarFromCode = ({
       <AvatarSvg avatar={safeAvatar} />
     </span>
   );
-};
+});
 
-const AvatarSvg = ({ avatar }: { avatar: AvatarConfig }) => {
+const AvatarSvg = memo(function AvatarSvg({ avatar }: { avatar: AvatarConfig }) {
   const eyeStroke = "#082f49";
   const mouthStroke = "#082f49";
 
@@ -161,4 +161,4 @@ const AvatarSvg = ({ avatar }: { avatar: AvatarConfig }) => {
       )}
     </svg>
   );
-};
+});

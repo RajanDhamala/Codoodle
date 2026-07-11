@@ -75,6 +75,7 @@ export const GuestProfileSetup = ({ onSave, variant = "page" }: GuestProfileSetu
   const [avatar, setAvatar] = useState<AvatarConfig>(() => createRandomAvatar());
   const [error, setError] = useState("");
   const [mobileAvatarStep, setMobileAvatarStep] = useState(0);
+  const [isSaving, setIsSaving] = useState(false);
   const canSave = isValidUsername(username);
 
   const updateAvatar = (patch: Partial<AvatarConfig>) => {
@@ -90,6 +91,7 @@ export const GuestProfileSetup = ({ onSave, variant = "page" }: GuestProfileSetu
 
   const submitProfile = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isSaving) return;
 
     const normalizedUsername = normalizeUsername(username);
     if (!isValidUsername(normalizedUsername)) {
@@ -97,6 +99,8 @@ export const GuestProfileSetup = ({ onSave, variant = "page" }: GuestProfileSetu
       return;
     }
 
+    setIsSaving(true);
+    setError("");
     const now = new Date().toISOString();
     const profile: GuestProfile = {
       schemaVersion: 2,
@@ -107,22 +111,25 @@ export const GuestProfileSetup = ({ onSave, variant = "page" }: GuestProfileSetu
       updatedAt: now,
     };
 
+    let payload: InitUserResponse;
     try {
-      const payload = (await api.post("/user/init", {
+      payload = (await api.post("/user/init", {
         name: profile.username,
         avatar: encodeAvatarConfig(profile.avatar),
       })) as unknown as InitUserResponse;
-      const serverId = payload.data?.id ?? payload.id;
-      const updatedAt = new Date().toISOString();
-
-      onSave({
-        ...profile,
-        id: serverId ? String(serverId) : profile.id,
-        updatedAt,
-      });
     } catch {
+      setIsSaving(false);
       setError("Could not save your profile. Try again.");
+      return;
     }
+
+    const serverId = payload.data?.id ?? payload.id;
+    setIsSaving(false);
+    onSave({
+      ...profile,
+      id: serverId ? String(serverId) : profile.id,
+      updatedAt: new Date().toISOString(),
+    });
   };
 
   const avatarSteps: Array<{
@@ -253,7 +260,7 @@ export const GuestProfileSetup = ({ onSave, variant = "page" }: GuestProfileSetu
             }}
             placeholder="Enter your name"
             maxLength={20}
-            className="h-12 min-w-0 flex-1 rounded-xl border border-[#e5e7eb] bg-white px-4 text-base font-medium text-[#0f172a] outline-none ring-[#0f766e]/25 transition placeholder:text-[#94a3b8] focus:border-[#0f766e] focus:ring-4"
+            className="h-14 min-h-14 min-w-0 flex-1 appearance-none rounded-xl border border-[#e5e7eb] bg-white px-4 py-3 text-base font-medium leading-6 text-[#0f172a] outline-none ring-[#0f766e]/25 transition placeholder:text-[#94a3b8] focus:border-[#0f766e] focus:ring-4 sm:h-12 sm:min-h-12 sm:py-2"
           />
 
           <button
@@ -415,11 +422,12 @@ export const GuestProfileSetup = ({ onSave, variant = "page" }: GuestProfileSetu
 
         <button
           type="submit"
-          disabled={!canSave}
+          disabled={!canSave || isSaving}
+          aria-busy={isSaving}
           className="mt-5 flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-[#0f766e] px-4 text-lg font-bold text-white elev-accent transition hover:bg-[#0d6a63] disabled:cursor-not-allowed disabled:opacity-50"
         >
           <UserRound className="h-5 w-5" />
-          Continue as guest
+          {isSaving ? "Saving player..." : "Continue as guest"}
         </button>
       </div>
     </form>
