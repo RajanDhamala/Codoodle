@@ -260,7 +260,7 @@ export const GuestProfileSetup = ({ onSave, variant = "page" }: GuestProfileSetu
             }}
             placeholder="Enter your name"
             maxLength={20}
-            className="h-12 min-w-0 flex-1 rounded-xl border border-[#e5e7eb] bg-white px-4 text-base font-medium text-[#0f172a] outline-none ring-[#0f766e]/25 transition placeholder:text-[#94a3b8] focus:border-[#0f766e] focus:ring-4"
+            className="h-14 min-h-14 min-w-0 flex-1 appearance-none rounded-xl border border-[#e5e7eb] bg-white px-4 py-3 text-base font-medium leading-6 text-[#0f172a] outline-none ring-[#0f766e]/25 transition placeholder:text-[#94a3b8] focus:border-[#0f766e] focus:ring-4 sm:h-12 sm:min-h-12 sm:py-2"
           />
 
           <button
