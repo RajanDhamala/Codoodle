@@ -36,7 +36,25 @@ api.interceptors.response.use(
     return payload as AxiosResponse;
   },
   (error) => {
-    return Promise.reject(error.response?.data || error);
+    const response = error.response;
+    const responseData = response?.data;
+
+    if (responseData && typeof responseData === "object") {
+      return Promise.reject({
+        ...responseData,
+        status: response.status,
+      });
+    }
+
+    if (response) {
+      return Promise.reject({
+        status: response.status,
+        message:
+          typeof responseData === "string" ? responseData : error.message,
+      });
+    }
+
+    return Promise.reject(error);
   }
 );
 

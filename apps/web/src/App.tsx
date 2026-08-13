@@ -5,8 +5,9 @@ import { BrowserRouter as Router, Navigate, Route, Routes, useLocation } from "r
 import { QueryClientProvider } from "@tanstack/react-query";
 import queryClient from "./Utils/QueryConfig.tsx";
 import Loader from "./LazyLoading/Loader.tsx";
-import { Toaster } from "react-hot-toast";
+import toast, { Toaster } from "react-hot-toast";
 import useUserStore from "./UserStore.tsx";
+import useSocketStore from "./SocketStore.ts";
 import api from "./Utils/AxiosWrapper.ts";
 import { sanitizeAvatarConfig, type GuestProfile } from "./Utils/guestProfile.ts";
 
@@ -25,6 +26,10 @@ type CurrentUserProfile = GuestProfile & {
 type MeResponse = ServerUser & {
   user?: ServerUser;
   data?: ServerUser;
+};
+
+type ApiError = {
+  status?: number;
 };
 
 const getAvatarCode = (avatar: unknown) => {
@@ -76,6 +81,7 @@ const RequireGameRoomProfile = ({ children }: { children: ReactNode }) => {
 function App() {
   const guestProfileId = useUserStore((state) => state.guestProfile?.id);
   const setGuestProfile = useUserStore((state) => state.setGuestProfile);
+  const clearGuestProfile = useUserStore((state) => state.clearGuestProfile);
 
   useEffect(() => {
     if (!guestProfileId) return;
@@ -95,8 +101,17 @@ function App() {
         if (!isActive) return;
         const profile = normalizeServerUser(payload, existingProfile);
         if (profile) setGuestProfile(profile);
-      } catch {
-        return;
+      } catch (error) {
+        if (!isActive || (error as ApiError)?.status !== 401) return;
+
+        const { socketInstance, clearSocketInstance } =
+          useSocketStore.getState();
+        socketInstance?.disconnect();
+        clearSocketInstance(socketInstance);
+        clearGuestProfile();
+        toast.error("Your player session expired. Set up your player again.", {
+          id: "player-session-expired",
+        });
       }
     };
 
@@ -106,7 +121,7 @@ function App() {
       isActive = false;
       controller.abort();
     };
-  }, [guestProfileId, setGuestProfile]);
+  }, [clearGuestProfile, guestProfileId, setGuestProfile]);
 
   return (
     <QueryClientProvider client={queryClient}>
