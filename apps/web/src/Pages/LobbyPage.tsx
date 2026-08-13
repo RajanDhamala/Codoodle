@@ -211,6 +211,15 @@ const LobbyPage = () => {
   }, [profileSetupState?.openProfileSetup, profileSetupState?.returnTo]);
 
   useEffect(() => {
+    if (!activeUser) {
+      setIsSocketReady(false);
+      if (socketInstance) {
+        socketInstance.disconnect();
+        clearSocketInstance(socketInstance);
+      }
+      return;
+    }
+
     if (!socketInstance) {
       setIsSocketReady(false);
       setSocketInstance(createSocket());
@@ -221,15 +230,34 @@ const LobbyPage = () => {
 
     const handleConnect = () => setIsSocketReady(true);
     const handleDisconnect = () => setIsSocketReady(false);
+    const handleConnectError = (error: Error) => {
+      setIsSocketReady(false);
+      if (error.message !== "Unauthorized") return;
+
+      socketInstance.disconnect();
+      clearSocketInstance(socketInstance);
+      clearGuestProfile();
+      toast.error("Your player session expired. Set up your player again.", {
+        id: "player-session-expired",
+      });
+    };
 
     socketInstance.on("connect", handleConnect);
     socketInstance.on("disconnect", handleDisconnect);
+    socketInstance.on("connect_error", handleConnectError);
 
     return () => {
       socketInstance.off("connect", handleConnect);
       socketInstance.off("disconnect", handleDisconnect);
+      socketInstance.off("connect_error", handleConnectError);
     };
-  }, [setSocketInstance, socketInstance]);
+  }, [
+    activeUser,
+    clearGuestProfile,
+    clearSocketInstance,
+    setSocketInstance,
+    socketInstance,
+  ]);
 
   return (
     <>

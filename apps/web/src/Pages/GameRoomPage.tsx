@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { validate as isValidUuid } from "uuid";
 import { createSocket } from "../Utils/socket"
 import useRoomStore from "@/Zustand/RoomStore";
-import { Brush, CheckCircle2, Circle, Clock, Copy, Crown, Eraser, Flame, KeyRound, LogOut, MessageCircle, Minus, MousePointer2, Palette, Play, RotateCcw, Send, ShieldCheck, Sparkles, Square, Trophy, UserX, Users, Volume2 } from "lucide-react";
+import { Brush, CheckCircle2, Circle, Clock, Copy, Crown, Eraser, Flame, KeyRound, LogOut, Menu, MessageCircle, Minus, MousePointer2, Palette, Play, RotateCcw, Send, ShieldCheck, Sparkles, Square, Trophy, UserX, Users, Volume2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
 import type React from "react";
 import useSocketStore from "../SocketStore";
@@ -219,6 +219,10 @@ const GameRoom = () => {
   const [strokeColor, setStrokeColor] = useState("#111827");
   const [strokeSize, setStrokeSize] = useState(7);
   const [chatHistry, setChatHistry] = useState<ChatMessageView[]>([]);
+  const [isMobileRoomMenuOpen, setIsMobileRoomMenuOpen] = useState(false)
+  const [isMobileChatOpen, setIsMobileChatOpen] = useState(false)
+  const [unreadChatCount, setUnreadChatCount] = useState(0)
+  const isMobileChatOpenRef = useRef(false)
   const [Msg, setMsg] = useState<string>("")
   const [members, setMember] = useState<RoomMember[]>([])
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -303,7 +307,56 @@ const GameRoom = () => {
         behavior: "smooth",
       });
     }
-  }, [chatHistry]);
+  }, [chatHistry, isMobileChatOpen]);
+
+  useEffect(() => {
+    if (!isMobileRoomMenuOpen && !isMobileChatOpen) {
+      return
+    }
+
+    const closeMobileOverlay = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") {
+        return
+      }
+
+      isMobileChatOpenRef.current = false
+      setIsMobileRoomMenuOpen(false)
+      setIsMobileChatOpen(false)
+    }
+
+    window.addEventListener("keydown", closeMobileOverlay)
+
+    return () => {
+      window.removeEventListener("keydown", closeMobileOverlay)
+    }
+  }, [isMobileChatOpen, isMobileRoomMenuOpen])
+
+  const toggleMobileRoomMenu = () => {
+    setIsMobileRoomMenuOpen((isOpen) => !isOpen)
+    isMobileChatOpenRef.current = false
+    setIsMobileChatOpen(false)
+  }
+
+  const closeMobileRoomMenu = () => {
+    setIsMobileRoomMenuOpen(false)
+  }
+
+  const toggleMobileChat = () => {
+    setIsMobileChatOpen((isOpen) => {
+      const nextIsOpen = !isOpen
+      isMobileChatOpenRef.current = nextIsOpen
+      if (nextIsOpen) {
+        setUnreadChatCount(0)
+      }
+      return nextIsOpen
+    })
+    setIsMobileRoomMenuOpen(false)
+  }
+
+  const closeMobileChat = () => {
+    isMobileChatOpenRef.current = false
+    setIsMobileChatOpen(false)
+  }
 
   const SendGroupMessage = () => {
     if (!RoomId || !isValidUuid(RoomId)) {
@@ -483,8 +536,8 @@ const GameRoom = () => {
         showSuccessToast(data.message || "Joined room successfully", "room-join");
       }
     });
-  // The room join callback uses ref-backed room state; adding render-local helpers here causes repeated join attempts.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // The room join callback uses ref-backed room state; adding render-local helpers here causes repeated join attempts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeUser, socketInstance, socketUserPayload]);
 
   useEffect(() => {
@@ -514,6 +567,10 @@ const GameRoom = () => {
         reconnect,
         silent: reconnect || RoomId === roomCode,
       })
+
+      if (!isMobileChatOpenRef.current && window.matchMedia("(max-width: 639px)").matches) {
+        setUnreadChatCount((count) => count + 1)
+      }
     }
 
     const handleConnect = () => {
@@ -701,8 +758,8 @@ const GameRoom = () => {
 
 
     }
-  // Socket handlers read ref-backed canvas/room state; resubscribing on every drawing helper change drops active streams.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Socket handlers read ref-backed canvas/room state; resubscribing on every drawing helper change drops active streams.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [RoomId, isRoomIdValid, joinRoom, socketInstance])
 
 
@@ -1473,6 +1530,13 @@ const GameRoom = () => {
   const canSubmitTurn = hasStarted && isMyTurn && hasSubmittedThisTurn;
   const canStartGame = isAdminUser && room?.phase === "lobby" && connectedMembersCount >= 3;
   const hasVoted = Boolean(activeUser?.id && room?.votedPlayerIds?.includes(activeUser.id));
+  const turnHeading = isMyTurn
+    ? strokesRemaining <= 0
+      ? "Submit your action"
+      : hasSubmittedThisTurn
+        ? "Draw another stroke or submit"
+        : "Your turn"
+    : `${currentPlayer?.username || "Player"} is drawing`;
   const turnSecondsRemaining = room?.turnEndsAt
     ? Math.max(0, Math.ceil((room.turnEndsAt - now) / 1000))
     : 0;
@@ -1503,8 +1567,8 @@ const GameRoom = () => {
 
     DrawGameState(latestGameStateRef.current)
     drawActiveStroke(latestActiveStrokeRef.current)
-  // Redraws are keyed to game progress; draw helpers are stable for this render path but not memoized.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Redraws are keyed to game progress; draw helpers are stable for this render path but not memoized.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasStarted, room?.currentPlayerId, room?.submittedTurns])
 
   useEffect(() => {
@@ -1521,28 +1585,40 @@ const GameRoom = () => {
     if (autoSubmittedTurnKeyRef.current === turnKey) return
     autoSubmittedTurnKeyRef.current = turnKey
     SubmitTurn()
-  // SubmitTurn reads ref-backed room state; resubscribing on every helper change drops active streams.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // SubmitTurn reads ref-backed room state; resubscribing on every helper change drops active streams.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoSubmit, hasStarted, isMyTurn, strokesRemaining, room?.currentPlayerId, room?.currentRound])
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#f6f7f9] text-[#0f172a] [font-family:Inter,ui-sans-serif,system-ui]">
       <header className="sticky top-0 z-40 border-b border-[#e5e7eb] bg-[#f6f7f9]/85 px-4 py-4 backdrop-blur">
         <div className="mx-auto flex max-w-[1500px] flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2 text-sm text-[#64748b]">
-              <span>Room</span>
-              <button
-                onClick={CopyRoomCode}
-                className="inline-flex items-center gap-2 rounded-lg border border-[#e5e7eb] bg-white px-2.5 py-1 font-mono text-[#334155] elev-1 transition hover:border-[#0f172a] hover:text-[#0f172a]"
-              >
-                Copy invite
-                <Copy className="h-3.5 w-3.5" />
-              </button>
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              onClick={toggleMobileRoomMenu}
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#e5e7eb] bg-white text-[#334155] elev-1 transition hover:border-[#0f172a] hover:text-[#0f172a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f766e] sm:hidden"
+              aria-label={isMobileRoomMenuOpen ? "Close players menu" : "Open players menu"}
+              aria-controls="mobile-room-menu"
+              aria-expanded={isMobileRoomMenuOpen}
+            >
+              {isMobileRoomMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-sm text-[#64748b]">
+                <span>Room</span>
+                <button
+                  onClick={CopyRoomCode}
+                  className="inline-flex items-center gap-2 rounded-lg border border-[#e5e7eb] bg-white px-2.5 py-1 font-mono text-[#334155] elev-1 transition hover:border-[#0f172a] hover:text-[#0f172a]"
+                >
+                  Copy invite
+                  <Copy className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <h1 className="mt-1 truncate text-2xl font-bold tracking-[-0.02em] [font-family:'Space_Grotesk',Inter,ui-sans-serif]">
+                Drawing Imposter
+              </h1>
             </div>
-            <h1 className="mt-1 text-2xl font-bold tracking-[-0.02em] [font-family:'Space_Grotesk',Inter,ui-sans-serif]">
-              Drawing Imposter
-            </h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -1556,19 +1632,51 @@ const GameRoom = () => {
         </div>
       </header>
 
-      <div className="relative z-10 mx-auto grid max-w-[1500px] gap-4 px-4 py-4 xl:grid-cols-[300px_minmax(0,1fr)_340px]">
-        <aside className="order-1 space-y-4 xl:order-1">
+      {isMobileRoomMenuOpen ? (
+        <button
+          type="button"
+          className="fixed inset-0 z-50 bg-[#0f172a]/45 backdrop-blur-[1px] sm:hidden"
+          onClick={closeMobileRoomMenu}
+          aria-label="Close players menu"
+        />
+      ) : null}
+
+      {isMobileChatOpen ? (
+        <button
+          type="button"
+          className="fixed inset-0 z-50 bg-[#0f172a]/45 backdrop-blur-[1px] sm:hidden"
+          onClick={closeMobileChat}
+          aria-label="Close chat"
+        />
+      ) : null}
+
+      <div className="relative mx-auto grid max-w-[1500px] gap-4 px-4 pb-24 pt-4 sm:py-4 xl:grid-cols-[300px_minmax(0,1fr)_340px]">
+        <aside
+          id="mobile-room-menu"
+          className={`fixed inset-y-0 left-0 z-[60] order-1 w-[min(88vw,360px)] space-y-4 overflow-y-auto bg-[#f6f7f9] p-4 shadow-2xl transition-transform duration-200 sm:visible sm:static sm:z-auto sm:w-auto sm:translate-x-0 sm:overflow-visible sm:bg-transparent sm:p-0 sm:shadow-none sm:transition-none xl:order-1 ${isMobileRoomMenuOpen ? "visible translate-x-0" : "invisible -translate-x-full"}`}
+          role={isMobileRoomMenuOpen ? "dialog" : undefined}
+          aria-modal={isMobileRoomMenuOpen ? "true" : undefined}
+          aria-label="Players and turn information"
+        >
+          <div className="sticky top-0 z-10 flex items-center justify-between rounded-xl border border-[#e5e7eb] bg-white p-3 elev-1 sm:hidden">
+            <h2 className="flex items-center gap-2 font-bold text-[#0f172a]">
+              <Users className="h-4 w-4 text-[#0f766e]" />
+              Room overview
+            </h2>
+            <button
+              type="button"
+              onClick={closeMobileRoomMenu}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[#e5e7eb] text-[#334155] transition hover:border-[#0f172a] hover:text-[#0f172a]"
+              aria-label="Close players menu"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
           {hasStarted ? (
-            <Panel>
+            <Panel className="hidden sm:block">
               <p className="text-sm font-medium text-[#64748b]">Turn</p>
               <h2 className="mt-1 text-lg font-bold text-[#0f172a]">
-                {isMyTurn
-                  ? strokesRemaining <= 0
-                    ? "Submit your action"
-                    : hasSubmittedThisTurn
-                      ? "Draw another stroke or submit"
-                      : "Your turn"
-                  : `${currentPlayer?.username || "Player"} is drawing`}
+                {turnHeading}
               </h2>
               <p className="mt-1 text-sm text-[#64748b]">
                 Round {room?.currentRound || 1}/{room?.maxRounds || 1}
@@ -1663,6 +1771,35 @@ const GameRoom = () => {
                 ? "!border-2 !border-[#22c55e] ring-2 ring-[#86efac] shadow-[0_12px_30px_rgba(22,163,74,0.16)]"
                 : "border-[#0f172a] elev-3"
                 }`}>
+                <div className="mb-3 rounded-xl border border-[#dbe4ea] bg-[#f8fafc] p-3 sm:hidden">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-[#64748b]">
+                        Turn
+                        <span className="h-1 w-1 rounded-full bg-[#94a3b8]" />
+                        Round {room?.currentRound || 1}/{room?.maxRounds || 1}
+                      </p>
+                      <h2 className="mt-1 truncate text-lg font-bold text-[#0f172a]">
+                        {turnHeading}
+                      </h2>
+                    </div>
+                    <span
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[#bbf7d0] bg-[#ecfdf5] px-2.5 py-1.5 text-sm font-bold text-[#047857] tabular-nums"
+                      aria-label={`${turnSecondsRemaining} seconds remaining in this turn`}
+                    >
+                      <Clock className="h-4 w-4" />
+                      {turnSecondsRemaining}s
+                    </span>
+                  </div>
+                  {roleInfo ? (
+                    <p className="mt-2 rounded-lg border border-[#99f6e4] bg-[#f0fdfa] px-2.5 py-2 text-sm font-semibold leading-5 text-[#0f766e]">
+                      {roleInfo.role === "imposter"
+                        ? `You are the imposter. Category: ${roleInfo.category}`
+                        : `Word: ${roleInfo.word} | Category: ${roleInfo.category}`}
+                    </p>
+                  ) : null}
+                </div>
+
                 <div className="mb-3 flex">
                   <div className={`inline-flex min-w-0 max-w-full items-center gap-2 rounded-full border py-1.5 pl-1.5 pr-3 elev-1 ${isMyTurn
                     ? "border-[#22c55e] bg-[#dcfce7] shadow-[0_0_0_3px_rgba(34,197,94,0.14)]"
@@ -1814,7 +1951,7 @@ const GameRoom = () => {
                       : canDraw ? `Draw up to ${maxStrokesPerTurn} stroke${maxStrokesPerTurn === 1 ? "" : "s"}. ${strokesRemaining} left.` : drawBlockMessage}
                   </p>
                   <div className="flex flex-wrap items-center gap-2">
-                    <label className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition ${autoSubmit
+                    <label className={`hidden items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition sm:inline-flex ${autoSubmit
                       ? "border-[#0f766e] bg-[#f0fdfa] text-[#0f766e]"
                       : "border-[#e5e7eb] bg-[#f3f4f6] text-[#334155] hover:border-[#0f172a]/40"
                       }`}>
@@ -1837,7 +1974,7 @@ const GameRoom = () => {
                     <button
                       onClick={SubmitTurn}
                       disabled={!canSubmitTurn}
-                      className="rounded-xl bg-[#0f172a] px-4 py-2 text-sm font-semibold text-white elev-2 transition hover:bg-[#334155] disabled:cursor-not-allowed disabled:opacity-40"
+                      className="hidden rounded-xl bg-[#0f172a] px-4 py-2 text-sm font-semibold text-white elev-2 transition hover:bg-[#334155] disabled:cursor-not-allowed disabled:opacity-40 sm:inline-block"
                     >
                       Submit action
                     </button>
@@ -1876,18 +2013,33 @@ const GameRoom = () => {
         </section>
 
         <aside className="order-3 space-y-4">
-          <Panel>
+          <Panel
+            id="mobile-chat"
+            className={`${isMobileChatOpen ? "fixed inset-x-3 bottom-20 z-[70] flex max-h-[calc(100vh-7rem)] flex-col shadow-2xl" : "hidden"} sm:static sm:block sm:max-h-none`}
+            role={isMobileChatOpen ? "dialog" : undefined}
+            aria-modal={isMobileChatOpen ? true : undefined}
+          >
             <div className="flex items-center justify-between gap-3">
               <h2 className="flex items-center gap-2 font-bold text-[#0f172a]">
                 <MessageCircle className="h-4 w-4 text-[#0f766e]" />
                 Chat
               </h2>
-              <span className="rounded-full border border-[#e5e7eb] bg-[#f3f4f6] px-2 py-1 text-xs font-semibold text-[#334155]">
-                {visibleMessages.length}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="rounded-full border border-[#e5e7eb] bg-[#f3f4f6] px-2 py-1 text-xs font-semibold text-[#334155]">
+                  {visibleMessages.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={closeMobileChat}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#e5e7eb] text-[#334155] transition hover:border-[#0f172a] hover:text-[#0f172a] sm:hidden"
+                  aria-label="Close chat"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
-            <div ref={chatMessagesRef} className="cld-scroll mt-4 flex h-64 flex-col gap-3 overflow-y-auto rounded-xl border border-[#e5e7eb] bg-[#f3f4f6] p-3">
+            <div ref={chatMessagesRef} className="cld-scroll mt-4 flex h-[min(55vh,24rem)] min-h-0 flex-col gap-3 overflow-y-auto rounded-xl border border-[#e5e7eb] bg-[#f3f4f6] p-3 sm:h-64">
 
               {visibleMessages.length > 0 ? (
                 visibleMessages.map((item, index) => {
@@ -2026,6 +2178,47 @@ const GameRoom = () => {
           ) : null}
         </aside>
       </div>
+
+      <button
+        type="button"
+        onClick={toggleMobileChat}
+        className="fixed bottom-4 left-4 z-[80] inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#0f172a] text-white shadow-[0_12px_30px_rgba(15,23,42,0.3)] transition hover:bg-[#334155] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f766e] sm:hidden"
+        aria-label={isMobileChatOpen ? "Close chat" : "Open chat"}
+        aria-controls="mobile-chat"
+        aria-expanded={isMobileChatOpen}
+      >
+        {isMobileChatOpen ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
+        {unreadChatCount > 0 && !isMobileChatOpen ? (
+          <span className="absolute -right-1 -top-1 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-[#ef4444] px-1 text-[11px] font-bold leading-none text-white">
+            {unreadChatCount > 99 ? "99+" : unreadChatCount}
+          </span>
+        ) : null}
+      </button>
+
+      {hasStarted && !isMobileChatOpen && !isMobileRoomMenuOpen ? (
+        <div className="fixed bottom-4 right-4 z-[80] flex items-center gap-2 sm:hidden">
+          <label className={`inline-flex h-12 items-center gap-2 rounded-xl border px-3 text-sm font-semibold shadow-[0_10px_24px_rgba(15,23,42,0.18)] transition ${autoSubmit
+            ? "border-[#0f766e] bg-[#f0fdfa] text-[#0f766e]"
+            : "border-[#e5e7eb] bg-white text-[#334155]"
+            }`}>
+            <input
+              type="checkbox"
+              checked={autoSubmit}
+              onChange={(event) => setAutoSubmit(event.currentTarget.checked)}
+              className="h-4 w-4 accent-[#0f766e]"
+            />
+            Auto
+          </label>
+          <button
+            type="button"
+            onClick={SubmitTurn}
+            disabled={!canSubmitTurn}
+            className="h-12 rounded-xl bg-[#0f172a] px-4 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.24)] transition hover:bg-[#334155] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Submit action
+          </button>
+        </div>
+      ) : null}
       {
         isVotingPhase ? (
           <VotingModal
@@ -2046,11 +2239,9 @@ const GameRoom = () => {
 const Panel = ({
   children,
   className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) => (
-  <section className={`rounded-2xl border border-[#e5e7eb] bg-white p-4 elev-2 ${className}`}>
+  ...props
+}: React.ComponentPropsWithoutRef<"section">) => (
+  <section {...props} className={`rounded-2xl border border-[#e5e7eb] bg-white p-4 elev-2 ${className}`}>
     {children}
   </section>
 );
