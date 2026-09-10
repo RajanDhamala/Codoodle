@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import { v4 as uuidv4, validate as isValidUuid } from "uuid";
 import cookie from "cookie";
 import { getOptionalIntEnv, getRequiredEnv } from "./env.js";
+import { WORD_BANK } from "./WordBank.js";
 let socketInstance;
 
 const ActiveUser = new Map();
@@ -25,18 +26,6 @@ const MIN_MAX_STROKES_PER_TURN = 1;
 const MAX_MAX_STROKES_PER_TURN = 3;
 const VOTING_DURATION_MS = 15000;
 const RESULT_DURATION_MS = 7000;
-const WORD_BANK = [
-  { word: "Pizza", category: "Food" },
-  { word: "Airplane", category: "Transport" },
-  { word: "Guitar", category: "Music" },
-  { word: "Volcano", category: "Nature" },
-  { word: "Robot", category: "Technology" },
-  { word: "Castle", category: "Place" },
-  { word: "Basketball", category: "Sport" },
-  { word: "Umbrella", category: "Object" },
-  { word: "Elephant", category: "Animal" },
-  { word: "Camera", category: "Object" },
-];
 
 const normalizeAvatarCode = (user = {}) => {
   if (typeof user.avatarCode === "string" && user.avatarCode.trim()) {
