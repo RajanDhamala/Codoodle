@@ -14,6 +14,10 @@ COPY --chown=test:prod . .
 #COPY . .
 #RUN chown -R test:prod /app
 
+RUN chown -R test:prod /app
+
+USER test
+
 EXPOSE 8000
 
 CMD ["pnpm", "start"]
