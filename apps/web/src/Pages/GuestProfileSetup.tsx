@@ -1,20 +1,14 @@
-import { ChevronLeft, ChevronRight, Shuffle, UserRound } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { ArrowRight, Check, CircleUserRound, Eye, Palette, RotateCcw, Scissors, Shuffle, Smile, Glasses, X } from "lucide-react";
+import { type FormEvent, useRef, useState } from "react";
 import {
-  avatarAccessoryOptions,
-  avatarBackgroundOptions,
-  avatarBodyColorOptions,
-  avatarEyeOptions,
-  avatarHairColorOptions,
-  avatarHairStyleOptions,
-  avatarMouthOptions,
-  avatarPatternOptions,
-  encodeAvatarConfig,
-  type AvatarConfig,
-  type GuestProfile,
+  avatarAccessoryOptions, avatarBackgroundOptions, avatarBodyColorOptions, avatarEyeOptions,
+  avatarHairColorOptions, avatarHairStyleOptions, avatarMouthOptions, avatarPatternOptions,
+  encodeAvatarConfig, type AvatarChoice, type AvatarConfig, type GuestProfile,
 } from "../Utils/guestProfile";
-import { AvatarBadge } from "./GameAvatar";
+import { avatarDisplayColor } from "../Utils/avatarAppearance";
+import { AvatarArtwork, AvatarBadge } from "./GameAvatar";
 import api from "../Utils/AxiosWrapper";
+import "./GuestProfileSetup.css";
 
 type InitUserResponse = {
   data?: {
@@ -25,17 +19,10 @@ type InitUserResponse = {
 
 type GuestProfileSetupProps = {
   onSave: (profile: GuestProfile) => void;
+  onClose?: () => void;
   variant?: "page" | "modal";
+  initialProfile?: GuestProfile | null;
 };
-
-const usernameSuggestions = [
-  "Blue Marker",
-  "Quick Sketch",
-  "Hidden Artist",
-  "Canvas Champ",
-  "Fast Doodle",
-  "Secret Line",
-];
 
 const pickRandom = <T,>(items: readonly T[]) => {
   const index = Math.floor(Math.random() * items.length);
@@ -49,8 +36,6 @@ const isValidUsername = (value: string) => {
   return username.length >= 2 && username.length <= 20;
 };
 
-const getRandomUsername = () => pickRandom(usernameSuggestions);
-
 const getGuestId = () => {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
@@ -58,6 +43,15 @@ const getGuestId = () => {
 
   return `guest-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
+
+const categories = [
+  { id: "skin", label: "Skin", icon: CircleUserRound },
+  { id: "hair", label: "Hair", icon: Scissors },
+  { id: "eyes", label: "Eyes", icon: Eye },
+  { id: "mouth", label: "Mouth", icon: Smile },
+  { id: "extras", label: "Extras", icon: Glasses },
+  { id: "background", label: "Backdrop", icon: Palette },
+] as const;
 
 const createRandomAvatar = (): AvatarConfig => ({
   background: pickRandom(avatarBackgroundOptions).id,
@@ -70,27 +64,31 @@ const createRandomAvatar = (): AvatarConfig => ({
   accessory: pickRandom(avatarAccessoryOptions).id,
 });
 
-export const GuestProfileSetup = ({ onSave, variant = "page" }: GuestProfileSetupProps) => {
-  const [username, setUsername] = useState(() => getRandomUsername());
-  const [avatar, setAvatar] = useState<AvatarConfig>(() => createRandomAvatar());
+export const GuestProfileSetup = ({ onSave, onClose, variant = "page", initialProfile }: GuestProfileSetupProps) => {
+  const [startingUsername] = useState(() => initialProfile?.username ?? "");
+  const [username, setUsername] = useState(startingUsername);
+  const [startingAvatar] = useState(() => initialProfile?.avatar ?? createRandomAvatar());
+  const [avatar, setAvatar] = useState<AvatarConfig>(startingAvatar);
+  const [category, setCategory] = useState<(typeof categories)[number]["id"]>("skin");
   const [error, setError] = useState("");
-  const [mobileAvatarStep, setMobileAvatarStep] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
+  const closeConfirmation = useRef<HTMLDialogElement>(null);
   const canSave = isValidUsername(username);
+  const hasUnsavedChanges = normalizeUsername(username) !== normalizeUsername(startingUsername)
+    || encodeAvatarConfig(avatar) !== encodeAvatarConfig(startingAvatar);
+  const updateAvatar = (key: keyof AvatarConfig, value: string) => setAvatar(current => ({ ...current, [key]: value }));
+  const choiceProps = { avatar, onChange: updateAvatar };
 
-  const updateAvatar = (patch: Partial<AvatarConfig>) => {
-    setAvatar((previousAvatar) => ({ ...previousAvatar, ...patch }));
-    setError("");
+  const requestClose = () => {
+    if (isSaving) return;
+    if (hasUnsavedChanges) {
+      closeConfirmation.current?.showModal();
+    } else {
+      onClose?.();
+    }
   };
 
-  const randomizeProfile = () => {
-    setUsername(getRandomUsername());
-    setAvatar(createRandomAvatar());
-    setError("");
-  };
-
-  const submitProfile = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const persistProfile = async () => {
     if (isSaving) return;
 
     const normalizedUsername = normalizeUsername(username);
@@ -132,389 +130,153 @@ export const GuestProfileSetup = ({ onSave, variant = "page" }: GuestProfileSetu
     });
   };
 
-  const avatarSteps: Array<{
-    key: string;
-    label: string;
-    value: string;
-    options: ReadonlyArray<{ id: string; label: string }>;
-    showSwatch: boolean;
-    onChange: (value: string) => void;
-  }> = [
-    {
-      key: "hairStyle",
-      label: "Hair style",
-      value: avatar.hairStyle,
-      options: avatarHairStyleOptions,
-      showSwatch: false,
-      onChange: (value) => updateAvatar({ hairStyle: value as AvatarConfig["hairStyle"] }),
-    },
-    {
-      key: "hairColor",
-      label: "Hair color",
-      value: avatar.hairColor,
-      options: avatarHairColorOptions,
-      showSwatch: true,
-      onChange: (value) => updateAvatar({ hairColor: value as AvatarConfig["hairColor"] }),
-    },
-    {
-      key: "eyes",
-      label: "Eyes",
-      value: avatar.eyeStyle,
-      options: avatarEyeOptions,
-      showSwatch: false,
-      onChange: (value) => updateAvatar({ eyeStyle: value as AvatarConfig["eyeStyle"] }),
-    },
-    {
-      key: "accessory",
-      label: "Accessory",
-      value: avatar.accessory,
-      options: avatarAccessoryOptions,
-      showSwatch: false,
-      onChange: (value) => updateAvatar({ accessory: value as AvatarConfig["accessory"] }),
-    },
-    {
-      key: "bodyColor",
-      label: "Body color",
-      value: avatar.bodyColor,
-      options: avatarBodyColorOptions,
-      showSwatch: true,
-      onChange: (value) => updateAvatar({ bodyColor: value as AvatarConfig["bodyColor"] }),
-    },
-    {
-      key: "background",
-      label: "Background",
-      value: avatar.background,
-      options: avatarBackgroundOptions,
-      showSwatch: true,
-      onChange: (value) => updateAvatar({ background: value as AvatarConfig["background"] }),
-    },
-    {
-      key: "mouth",
-      label: "Mouth",
-      value: avatar.mouthStyle,
-      options: avatarMouthOptions,
-      showSwatch: false,
-      onChange: (value) => updateAvatar({ mouthStyle: value as AvatarConfig["mouthStyle"] }),
-    },
-    {
-      key: "pattern",
-      label: "Pattern",
-      value: avatar.pattern,
-      options: avatarPatternOptions,
-      showSwatch: false,
-      onChange: (value) => updateAvatar({ pattern: value as AvatarConfig["pattern"] }),
-    },
-  ];
-
-  const activeMobileStep = avatarSteps[mobileAvatarStep] ?? avatarSteps[0];
-  const activeMobileOptionIndex = activeMobileStep.options.findIndex(
-    (option) => option.id === activeMobileStep.value
-  );
-  const activeMobileOption =
-    activeMobileStep.options[activeMobileOptionIndex >= 0 ? activeMobileOptionIndex : 0];
-
-  const stepMobileAvatarValue = (direction: -1 | 1) => {
-    if (!activeMobileStep.options.length) return;
-
-    const currentIndex = activeMobileOptionIndex >= 0 ? activeMobileOptionIndex : 0;
-    const nextIndex =
-      (currentIndex + direction + activeMobileStep.options.length) %
-      activeMobileStep.options.length;
-    const nextOption = activeMobileStep.options[nextIndex];
-
-    if (nextOption) {
-      activeMobileStep.onChange(nextOption.id);
-    }
+  const submitProfile = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void persistProfile();
   };
 
-  const formClassName = [
-    "w-full rounded-2xl border border-[#e5e7eb] bg-white p-4 sm:p-6",
-    variant === "page" ? "max-w-3xl elev-3" : "elev-modal",
-  ]
-    .filter(Boolean)
-    .join(" ");
-
   const form = (
-    <form onSubmit={submitProfile} className={formClassName}>
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#0f766e]">
-            Guest profile
-          </p>
-          <h2 className="mt-1 text-2xl font-bold tracking-[-0.02em] text-[#0f172a] [font-family:'Space_Grotesk',Inter,ui-sans-serif]">
-            Set up your player
-          </h2>
-        </div>
-        <span className="grid h-11 w-11 place-items-center rounded-xl border border-[#ccfbf1] bg-[#f0fdfa] text-[#0f766e]">
-          <UserRound className="h-5 w-5" />
-        </span>
-      </div>
+    <form onSubmit={submitProfile} className="player-setup" aria-labelledby="player-setup-title">
+      {onClose && (
+        <button type="button" onClick={requestClose} disabled={isSaving}
+          className="player-setup-dialog__close" aria-label="Close player setup">
+          <X className="h-5 w-5" />
+        </button>
+      )}
+      <header className="player-setup__header">
+        <p className="player-setup__eyebrow">Your player</p>
+        <h2 id="player-setup-title">Make it your own.</h2>
+        <p>A familiar face. A suspiciously good poker face.</p>
+      </header>
 
-      <div className="mt-5 rounded-xl border border-[#e5e7eb] bg-[#f3f4f6] p-4 sm:p-5">
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <input
-            value={username}
-            onChange={(event) => {
-              setUsername(event.target.value);
-              setError("");
-            }}
-            placeholder="Enter your name"
-            maxLength={20}
-            className="h-14 min-h-14 min-w-0 flex-1 appearance-none rounded-xl border border-[#e5e7eb] bg-white px-4 py-3 text-base font-medium leading-6 text-[#0f172a] outline-none ring-[#0f766e]/25 transition placeholder:text-[#94a3b8] focus:border-[#0f766e] focus:ring-4 sm:h-12 sm:min-h-12 sm:py-2"
-          />
-
-          <button
-            type="button"
-            onClick={randomizeProfile}
-            className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-[#e5e7eb] bg-white px-4 text-sm font-semibold text-[#334155] elev-1 transition hover:border-[#0f172a] hover:text-[#0f172a]"
-          >
-            <Shuffle className="h-4 w-4" />
-            Random
-          </button>
-        </div>
-
-        <div className="mt-5 lg:hidden">
-          <div className="rounded-xl border border-[#e5e7eb] bg-white px-4 py-5 text-center">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#0f766e]">
-              {mobileAvatarStep + 1}/{avatarSteps.length} · {activeMobileStep.label}
-            </p>
-
-            <div className="mt-4 grid grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-3">
-              <button
-                type="button"
-                onClick={() => stepMobileAvatarValue(-1)}
-                className="flex h-11 items-center justify-center rounded-xl border border-[#e5e7eb] bg-white text-[#334155] elev-1 transition hover:border-[#0f172a] hover:text-[#0f172a]"
-                aria-label={`Previous ${activeMobileStep.label}`}
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </button>
-
-              <div>
-                <AvatarBadge
-                  avatar={avatar}
-                  name={username}
-                  className="mx-auto h-36 w-36 rounded-[28px] border-none bg-transparent shadow-none"
-                />
-                <p className="mt-3 text-xl font-bold text-[#0f172a]">
-                  {username.trim() || "Player"}
-                </p>
-                <p className="mt-1 text-xs uppercase tracking-[0.22em] text-[#64748b]">
-                  Guest profile
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => stepMobileAvatarValue(1)}
-                className="flex h-11 items-center justify-center rounded-xl border border-[#e5e7eb] bg-white text-[#334155] elev-1 transition hover:border-[#0f172a] hover:text-[#0f172a]"
-                aria-label={`Next ${activeMobileStep.label}`}
-              >
-                <ChevronRight className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="mt-4 rounded-xl border border-[#e5e7eb] bg-[#f3f4f6] px-3 py-3">
-              <div className="flex items-center justify-center gap-2">
-                {activeMobileStep.showSwatch && activeMobileOption ? (
-                  <span
-                    className="h-5 w-5 rounded-md border border-[#e5e7eb]"
-                    style={{ backgroundColor: activeMobileOption.id }}
-                  />
-                ) : null}
-                <span className="text-sm font-semibold text-[#0f172a]">
-                  {activeMobileOption?.label}
-                </span>
+      <fieldset disabled={isSaving} className="player-setup__fields">
+        <legend className="sr-only">Customize your player</legend>
+        <div className="player-setup__workspace">
+          <aside className="player-setup__identity">
+            <div className="player-setup__preview-area">
+              <AvatarBadge avatar={avatar} name={username.trim() || "Your player"} className="player-setup__preview" />
+              <div className="player-setup__preview-actions">
+                <button type="button" onClick={() => setAvatar(createRandomAvatar())} className="player-setup__shuffle">
+                  <Shuffle size={14} aria-hidden="true" /> Shuffle
+                </button>
+                <button type="button" onClick={() => setAvatar(startingAvatar)} className="player-setup__reset" aria-label="Reset avatar changes" title="Reset avatar changes">
+                  <RotateCcw size={15} aria-hidden="true" />
+                </button>
               </div>
             </div>
+            <div className="player-setup__name">
+              <label htmlFor="player-name">Your name</label>
+              <input id="player-name" value={username}
+                onChange={(event) => { setUsername(event.target.value); setError(""); }}
+                placeholder="Enter your name" minLength={2} maxLength={20} required autoComplete="nickname"
+                aria-describedby={error ? "player-name-hint player-setup-error" : "player-name-hint"}
+                aria-invalid={!canSave} />
+              <p id="player-name-hint">Required · 2–20 characters</p>
+            </div>
+          </aside>
 
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              {avatarSteps.map((step, index) => (
-                <button
-                  key={step.key}
-                  type="button"
-                  onClick={() => setMobileAvatarStep(index)}
-                  className={`rounded-lg border px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] transition ${index === mobileAvatarStep
-                    ? "border-[#0f766e]/40 bg-[#f0fdfa] text-[#0f766e]"
-                    : "border-[#e5e7eb] bg-white text-[#334155] hover:border-[#0f172a] hover:text-[#0f172a]"
-                    }`}
-                >
-                  {step.label}
+          <div className="player-setup__editor">
+            <div className="player-setup__categories" role="group" aria-label="Avatar features">
+              {categories.map(({ id, label, icon: Icon }) => (
+                <button key={id} type="button" onClick={() => setCategory(id)} aria-pressed={category === id} aria-controls="avatar-feature-options">
+                  <Icon size={18} aria-hidden="true" /><span>{label}</span>
                 </button>
               ))}
             </div>
+            <div id="avatar-feature-options" className="player-setup__panel">
+              {category === "skin" && <>
+                <ChoiceField {...choiceProps} property="bodyColor" label="Skin tone" options={avatarBodyColorOptions} swatches />
+                <p className="player-setup__hint">A little more you. Every feature is yours to change.</p>
+              </>}
+              {category === "hair" && <>
+                <ChoiceField {...choiceProps} property="hairStyle" label="Hair style" options={avatarHairStyleOptions} />
+                <ChoiceField {...choiceProps} property="hairColor" label="Hair color" options={avatarHairColorOptions} swatches />
+              </>}
+              {category === "eyes" && <>
+                <ChoiceField {...choiceProps} property="eyeStyle" label="Eyes" options={avatarEyeOptions} />
+                {(avatar.accessory === "shades" || avatar.accessory === "glasses") && <p className="player-setup__hint">Your eyewear stays on in the preview. Change it under Extras.</p>}
+              </>}
+              {category === "mouth" && <>
+                <ChoiceField {...choiceProps} property="mouthStyle" label="Mouth" options={avatarMouthOptions} />
+                {avatar.accessory === "mask" && <p className="player-setup__hint">Your mask covers the mouth. Remove it under Extras to see the change.</p>}
+              </>}
+              {category === "extras" && <ChoiceField {...choiceProps} property="accessory" label="Finishing touches" options={avatarAccessoryOptions} />}
+              {category === "background" && <>
+                <ChoiceField {...choiceProps} property="background" label="Background color" options={avatarBackgroundOptions} swatches />
+                <ChoiceField {...choiceProps} property="pattern" label="Pattern" options={avatarPatternOptions} />
+              </>}
+            </div>
           </div>
         </div>
-
-        <div className="mt-5 hidden items-center gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_220px_minmax(0,1fr)]">
-          <div className="grid gap-3">
-            <AvatarCycleControl
-              label="Hair style"
-              value={avatar.hairStyle}
-              options={avatarHairStyleOptions}
-              onChange={(hairStyle) => updateAvatar({ hairStyle })}
-            />
-            <AvatarCycleControl
-              label="Hair color"
-              value={avatar.hairColor}
-              options={avatarHairColorOptions}
-              onChange={(hairColor) => updateAvatar({ hairColor })}
-              showSwatch
-            />
-            <AvatarCycleControl
-              label="Eyes"
-              value={avatar.eyeStyle}
-              options={avatarEyeOptions}
-              onChange={(eyeStyle) => updateAvatar({ eyeStyle })}
-            />
-            <AvatarCycleControl
-              label="Accessory"
-              value={avatar.accessory}
-              options={avatarAccessoryOptions}
-              onChange={(accessory) => updateAvatar({ accessory })}
-            />
-          </div>
-
-          <div className="rounded-xl border border-[#e5e7eb] bg-[#f3f4f6] px-4 py-5 text-center">
-            <AvatarBadge
-              avatar={avatar}
-              name={username}
-              className="mx-auto h-40 w-40 rounded-[28px] border-none bg-transparent shadow-none"
-            />
-            <p className="mt-3 text-xl font-bold text-[#0f172a]">
-              {username.trim() || "Player"}
-            </p>
-            <p className="mt-1 text-xs uppercase tracking-[0.22em] text-[#64748b]">
-              Guest profile
-            </p>
-          </div>
-
-          <div className="grid gap-3">
-            <AvatarCycleControl
-              label="Body color"
-              value={avatar.bodyColor}
-              options={avatarBodyColorOptions}
-              onChange={(bodyColor) => updateAvatar({ bodyColor })}
-              showSwatch
-            />
-            <AvatarCycleControl
-              label="Background"
-              value={avatar.background}
-              options={avatarBackgroundOptions}
-              onChange={(background) => updateAvatar({ background })}
-              showSwatch
-            />
-            <AvatarCycleControl
-              label="Mouth"
-              value={avatar.mouthStyle}
-              options={avatarMouthOptions}
-              onChange={(mouthStyle) => updateAvatar({ mouthStyle })}
-            />
-            <AvatarCycleControl
-              label="Pattern"
-              value={avatar.pattern}
-              options={avatarPatternOptions}
-              onChange={(pattern) => updateAvatar({ pattern })}
-            />
-          </div>
-        </div>
-
-        {error && <p className="mt-4 text-sm font-medium text-[#b91c1c]">{error}</p>}
-
-        <button
-          type="submit"
-          disabled={!canSave || isSaving}
-          aria-busy={isSaving}
-          className="mt-5 flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-[#0f766e] px-4 text-lg font-bold text-white elev-accent transition hover:bg-[#0d6a63] disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <UserRound className="h-5 w-5" />
-          {isSaving ? "Saving player..." : "Continue as guest"}
+      </fieldset>
+      {error && <p id="player-setup-error" className="player-setup__error" role="alert">{error}</p>}
+      <footer className="player-setup__footer">
+        <p>You can change your look in the lobby.</p>
+        <button type="submit" disabled={!canSave || isSaving} aria-busy={isSaving} className="player-setup__submit">
+          {isSaving ? "Saving…" : initialProfile ? "Save player" : "Let’s play"}<ArrowRight size={18} aria-hidden="true" />
         </button>
-      </div>
+      </footer>
     </form>
   );
-
-  if (variant === "modal") {
-    return form;
-  }
-
-  return (
-    <main className="relative min-h-screen overflow-hidden bg-[#f6f7f9] px-4 py-8 text-[#0f172a] [font-family:Inter,ui-sans-serif,system-ui]">
-      <div className="relative mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-5xl items-center justify-center">
-        {form}
-      </div>
-    </main>
-  );
-};
-
-const AvatarCycleControl = <T extends string>({
-  label,
-  value,
-  options,
-  onChange,
-  showSwatch = false,
-}: {
-  label: string;
-  value: T;
-  options: ReadonlyArray<{ id: T; label: string }>;
-  onChange: (value: T) => void;
-  showSwatch?: boolean;
-}) => {
-  const selectedIndex = options.findIndex((option) => option.id === value);
-  const selectedOption = selectedIndex >= 0 ? options[selectedIndex] : options[0];
-
-  const step = (direction: -1 | 1) => {
-    if (!options.length) return;
-
-    const currentIndex = selectedIndex >= 0 ? selectedIndex : 0;
-    const nextIndex = (currentIndex + direction + options.length) % options.length;
-    const nextOption = options[nextIndex];
-
-    if (nextOption) {
-      onChange(nextOption.id);
-    }
-  };
-
-  if (!selectedOption) return null;
-
-  return (
-    <div className="rounded-xl border border-[#e5e7eb] bg-white px-3 py-2 elev-1">
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#334155]">{label}</p>
-        <p className="text-[11px] font-medium text-[#64748b]">
-          {selectedIndex + 1 || 1}/{options.length}
-        </p>
-      </div>
-      <div className="grid grid-cols-[40px_minmax(0,1fr)_40px] items-center gap-2">
-        <button
-          type="button"
-          onClick={() => step(-1)}
-          className="flex h-10 items-center justify-center rounded-lg border border-[#e5e7eb] bg-[#f3f4f6] text-[#334155] transition hover:border-[#0f172a] hover:text-[#0f172a]"
-          aria-label={`Previous ${label}`}
-        >
-          <ChevronLeft className="h-5 w-5" />
-        </button>
-
-        <div className="flex min-h-10 min-w-0 items-center justify-center gap-2 rounded-lg border border-[#e5e7eb] bg-[#f3f4f6] px-3 text-center">
-          {showSwatch && (
-            <span
-              className="h-5 w-5 shrink-0 rounded-md border border-[#e5e7eb]"
-              style={{ backgroundColor: selectedOption.id }}
-            />
-          )}
-          <span className="truncate text-sm font-semibold text-[#0f172a]">
-            {selectedOption.label}
-          </span>
+  return <>
+    {variant === "modal" ? form : <main className="player-setup-page">{form}</main>}
+    {onClose && (
+      <dialog ref={closeConfirmation} className="player-setup-confirm backdrop:bg-black/70"
+        aria-labelledby="player-confirm-title" aria-describedby="player-confirm-description"
+        onCancel={(event) => event.preventDefault()}>
+        <p className="player-setup__eyebrow">Unsaved changes</p>
+        <h2 id="player-confirm-title">Save your player?</h2>
+        <p id="player-confirm-description">You’ve changed your name or avatar. Save your changes before leaving, or keep editing.</p>
+        {!canSave && <p className="player-setup-confirm__note">Enter a name with 2–20 characters in the editor before saving.</p>}
+        {error && <p className="player-setup__error" role="alert">{error}</p>}
+        <div className="player-setup-confirm__actions">
+          <button type="button" className="player-setup-confirm__keep" disabled={isSaving}
+            autoFocus onClick={() => closeConfirmation.current?.close()}>Keep editing</button>
+          <button type="button" className="player-setup__submit" disabled={!canSave || isSaving}
+            aria-busy={isSaving} onClick={() => void persistProfile()}>
+            {isSaving ? "Saving…" : "Save and exit"}
+          </button>
         </div>
-
-        <button
-          type="button"
-          onClick={() => step(1)}
-          className="flex h-10 items-center justify-center rounded-lg border border-[#e5e7eb] bg-[#f3f4f6] text-[#334155] transition hover:border-[#0f172a] hover:text-[#0f172a]"
-          aria-label={`Next ${label}`}
-        >
-          <ChevronRight className="h-5 w-5" />
-        </button>
-      </div>
-    </div>
-  );
+      </dialog>
+    )}
+  </>;
 };
+
+function ChoiceField({ avatar, property, label, options, swatches = false, onChange }: {
+  avatar: AvatarConfig;
+  property: keyof AvatarConfig;
+  label: string;
+  options: readonly AvatarChoice[];
+  swatches?: boolean;
+  onChange: (key: keyof AvatarConfig, value: string) => void;
+}) {
+  const selected = options.find(option => option.id === avatar[property]);
+  return (
+    <fieldset className="player-setup__choices">
+      <legend>{label}<span>{selected?.label}</span></legend>
+      <div className={swatches ? "player-setup__swatches" : "player-setup__grid"}>
+        {options.map(option => {
+          const preview = { ...avatar, [property]: option.id };
+          // Feature cards reveal the eyes/mouth even when the full avatar wears a mask or shades.
+          if (property === "eyeStyle" || property === "mouthStyle") preview.accessory = "none";
+          return (
+            <label key={option.id} className={`player-setup__option${swatches ? " player-setup__option--swatch" : ""}`}>
+              <input type="radio" name={`avatar-${property}`} value={option.id} checked={avatar[property] === option.id}
+                onClick={() => {
+                  if (avatar[property] === option.id && options[0]) {
+                    onChange(property, options[0].id);
+                  }
+                }}
+                onChange={() => onChange(property, option.id)} aria-label={`${label}: ${option.label}`} />
+              <span className="player-setup__option-art" style={swatches ? { backgroundColor: avatarDisplayColor(property, option.id) } : undefined}>
+                {!swatches && <AvatarArtwork avatar={preview} detail={property} />}
+                {avatar[property] === option.id && <span className="player-setup__check"><Check size={12} strokeWidth={3} aria-hidden="true" /></span>}
+              </span>
+              <span className="player-setup__option-name">{option.label}</span>
+            </label>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}

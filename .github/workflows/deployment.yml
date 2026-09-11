@@ -2,7 +2,7 @@ name: Deployment
 
 on:
   pull_request:
-    branches: ["main"]
+    branches: ["prod"]
 
 jobs:
   build:
@@ -108,4 +108,4 @@ jobs:
           script: |
             whoami
             pwd
-            bash /usr/local/bin/coloodle.sh
+            # bash /usr/local/bin/coloodle.sh
