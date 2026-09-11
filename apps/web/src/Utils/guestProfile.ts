@@ -3,13 +3,13 @@ const GUEST_PROFILE_SCHEMA_VERSION = 2;
 
 type AvatarConfig = {
   background: string;
-  pattern: "none" | "stripes" | "dots";
+  pattern: "none" | "stripes" | "dots" | "waves";
   bodyColor: string;
-  hairStyle: "none" | "short" | "spiky" | "curly" | "cap";
+  hairStyle: "none" | "short" | "spiky" | "curly" | "cap" | "bob" | "long" | "bun";
   hairColor: string;
-  eyeStyle: "happy" | "wide" | "sleepy" | "wink";
-  mouthStyle: "smile" | "flat" | "open" | "smirk";
-  accessory: "none" | "glasses" | "mask";
+  eyeStyle: "happy" | "wide" | "sleepy" | "wink" | "soft" | "bold";
+  mouthStyle: "smile" | "flat" | "open" | "smirk" | "grin" | "pout";
+  accessory: "none" | "glasses" | "mask" | "shades" | "earrings" | "freckles";
 };
 
 type GuestProfile = {
@@ -39,14 +39,16 @@ const avatarBackgroundOptions: AvatarChoice[] = [
   { id: "#365314", label: "Lime" },
 ];
 
+// Preserve these IDs and their order for existing saved eight-digit codes.
+// The renderer and swatches translate them to the refined skin palette.
 const avatarBodyColorOptions: AvatarChoice[] = [
-  { id: "#38bdf8", label: "Sky" },
-  { id: "#5eead4", label: "Mint" },
-  { id: "#bef264", label: "Lime" },
-  { id: "#fbbf24", label: "Amber" },
+  { id: "#38bdf8", label: "Sand" },
+  { id: "#5eead4", label: "Honey" },
+  { id: "#bef264", label: "Caramel" },
+  { id: "#fbbf24", label: "Umber" },
   { id: "#fb7185", label: "Rose" },
-  { id: "#a78bfa", label: "Violet" },
-  { id: "#f8fafc", label: "Paper" },
+  { id: "#a78bfa", label: "Espresso" },
+  { id: "#f8fafc", label: "Porcelain" },
 ];
 
 const avatarHairColorOptions: AvatarChoice[] = [
@@ -64,6 +66,9 @@ const avatarHairStyleOptions: AvatarChoice<AvatarConfig["hairStyle"]>[] = [
   { id: "spiky", label: "Spiky" },
   { id: "curly", label: "Curly" },
   { id: "cap", label: "Cap" },
+  { id: "bob", label: "Bob" },
+  { id: "long", label: "Long" },
+  { id: "bun", label: "Bun" },
 ];
 
 const avatarEyeOptions: AvatarChoice<AvatarConfig["eyeStyle"]>[] = [
@@ -71,6 +76,8 @@ const avatarEyeOptions: AvatarChoice<AvatarConfig["eyeStyle"]>[] = [
   { id: "wide", label: "Wide" },
   { id: "sleepy", label: "Sleepy" },
   { id: "wink", label: "Wink" },
+  { id: "soft", label: "Soft" },
+  { id: "bold", label: "Bold" },
 ];
 
 const avatarMouthOptions: AvatarChoice<AvatarConfig["mouthStyle"]>[] = [
@@ -78,18 +85,24 @@ const avatarMouthOptions: AvatarChoice<AvatarConfig["mouthStyle"]>[] = [
   { id: "flat", label: "Flat" },
   { id: "open", label: "Open" },
   { id: "smirk", label: "Smirk" },
+  { id: "grin", label: "Grin" },
+  { id: "pout", label: "Pout" },
 ];
 
 const avatarAccessoryOptions: AvatarChoice<AvatarConfig["accessory"]>[] = [
   { id: "none", label: "None" },
   { id: "glasses", label: "Glasses" },
   { id: "mask", label: "Mask" },
+  { id: "shades", label: "Shades" },
+  { id: "earrings", label: "Hoops" },
+  { id: "freckles", label: "Freckles" },
 ];
 
 const avatarPatternOptions: AvatarChoice<AvatarConfig["pattern"]>[] = [
   { id: "none", label: "Plain" },
   { id: "stripes", label: "Stripes" },
   { id: "dots", label: "Dots" },
+  { id: "waves", label: "Waves" },
 ];
 
 const AVATAR_CODE_LENGTH = 8;

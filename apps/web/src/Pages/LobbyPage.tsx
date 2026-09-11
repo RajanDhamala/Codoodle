@@ -1,29 +1,21 @@
 import {
   type CSSProperties,
-  type Dispatch,
-  type SetStateAction,
   useEffect,
-  useMemo,
+  useRef,
   useState,
 } from "react";
 import {
   Brush,
-  Minus,
-  Play,
-  Plus,
-  Settings2,
   UserRound,
   UsersRound,
   Vote,
-  X,
 } from "lucide-react";
 
-import { AvatarBadge } from "./GameAvatar";
+import RoomHostControls from "./RoomHostControls";
+import { useRoomHost } from "../hooks/useRoomHost";
 import useSocketStore from "../SocketStore";
 import useUserStore from "../UserStore";
-import { defaultGameSettings, type GameSettings, type User } from "./GameTypes";
-import toast from "react-hot-toast";
-import useRoomStore from "@/Zustand/RoomStore";
+import type { GameSettings } from "./GameTypes";
 import { useLocation, useNavigate } from "react-router-dom";
 import { createSocket } from "../Utils/socket";
 import { GuestProfileSetup } from "./GuestProfileSetup";
@@ -62,20 +54,6 @@ const savePendingProfileReturn = (returnTo: string | null) => {
   window.sessionStorage.removeItem(pendingProfileReturnKey);
 };
 
-type CreateRoomResponse = {
-  success?: boolean;
-  roomId?: string;
-  message?: string;
-};
-
-type NumericSettingKey =
-  "maxPlayers" | "turnCyclesBeforeVote" | "maxStrokesPerTurn";
-
-const clampNumber = (value: number, min: number, max: number) => {
-  if (!Number.isFinite(value)) return min;
-  return Math.min(max, Math.max(min, value));
-};
-
 const strokeAnimationStyle = (dash: number, delay: string): CSSProperties =>
   ({
     "--dash-length": dash,
@@ -84,16 +62,13 @@ const strokeAnimationStyle = (dash: number, delay: string): CSSProperties =>
 
 const LobbyPage = () => {
   const guestProfile = useUserStore((state) => state.guestProfile);
-  const currentUser = useUserStore((state) => state.currentUser);
   const socketInstance = useSocketStore((state) => state.socketInstance);
   const setSocketInstance = useSocketStore((state) => state.setSocketInstance);
   const clearSocketInstance = useSocketStore(
     (state) => state.clearSocketInstance,
   );
-  const clearGuestProfile = useUserStore((state) => state.clearGuestProfile);
   const clearCurrentUser = useUserStore((state) => state.clearCurrentUser);
   const setGuestProfile = useUserStore((state) => state.setGuestProfile);
-  const { setRoomId } = useRoomStore();
   const navigate = useNavigate();
   const location = useLocation();
   const profileSetupState = location.state as LobbyLocationState | null;
@@ -101,67 +76,14 @@ const LobbyPage = () => {
     profileSetupState?.returnTo,
   );
 
-  const activeUser = useMemo<User | null>(() => {
-    if (currentUser) return currentUser;
-    if (!guestProfile) return null;
-
-    return {
-      id: guestProfile.id,
-      username: guestProfile.username,
-      avatar: guestProfile.avatar,
-    };
-  }, [currentUser, guestProfile]);
-
-  const [room, setRoom] = useState<string | null>(null);
-  const [settingsDraft, setSettingsDraft] =
-    useState<GameSettings>(defaultGameSettings);
-  const [isSocketReady, setIsSocketReady] = useState(() =>
-    Boolean(socketInstance?.connected),
-  );
+  const { activeUser, settingsDraft, setSettingsDraft, isSocketReady, isCreating, createRoom } = useRoomHost();
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const profileDialog = useRef<HTMLDialogElement>(null);
   const [profileRedirect, setProfileRedirect] = useState<string | null>(
     () => routeProfileReturnTo ?? readPendingProfileReturn(),
   );
 
-  const createRoom = () => {
-    if (!activeUser) {
-      setProfileRedirect(null);
-      savePendingProfileReturn(null);
-      setIsProfileModalOpen(true);
-      return;
-    }
-
-    if (!socketInstance?.connected) {
-      toast.error("Still connecting to the game server.");
-      return;
-    }
-
-    socketInstance.emit(
-      "create-group",
-      { settings: settingsDraft, currentUser: activeUser },
-      (data: CreateRoomResponse) => {
-        if (!data?.success || !data.roomId) {
-          toast.error(data?.message || "Failed to create room.");
-          return;
-        }
-
-        setRoomId(data.roomId);
-        setRoom(data.roomId);
-        toast.success("Room created.");
-        navigate(`/gameRoom/${data.roomId}`);
-      },
-    );
-  };
-
   const resetProfile = () => {
-    if (room) {
-      toast.error("Leave the room before changing player.");
-      return;
-    }
-    socketInstance?.disconnect();
-    clearSocketInstance(socketInstance);
-    clearGuestProfile();
-    clearCurrentUser();
     setProfileRedirect(null);
     savePendingProfileReturn(null);
     setIsProfileModalOpen(true);
@@ -202,6 +124,10 @@ const LobbyPage = () => {
   };
 
   useEffect(() => {
+    if (isProfileModalOpen) profileDialog.current?.showModal();
+  }, [isProfileModalOpen]);
+
+  useEffect(() => {
     if (!profileSetupState?.openProfileSetup) return;
 
     const redirect = normalizeProfileReturnTo(profileSetupState.returnTo);
@@ -210,54 +136,6 @@ const LobbyPage = () => {
     savePendingProfileReturn(redirect);
   }, [profileSetupState?.openProfileSetup, profileSetupState?.returnTo]);
 
-  useEffect(() => {
-    if (!activeUser) {
-      setIsSocketReady(false);
-      if (socketInstance) {
-        socketInstance.disconnect();
-        clearSocketInstance(socketInstance);
-      }
-      return;
-    }
-
-    if (!socketInstance) {
-      setIsSocketReady(false);
-      setSocketInstance(createSocket());
-      return;
-    }
-
-    setIsSocketReady(socketInstance.connected);
-
-    const handleConnect = () => setIsSocketReady(true);
-    const handleDisconnect = () => setIsSocketReady(false);
-    const handleConnectError = (error: Error) => {
-      setIsSocketReady(false);
-      if (error.message !== "Unauthorized") return;
-
-      socketInstance.disconnect();
-      clearSocketInstance(socketInstance);
-      clearGuestProfile();
-      toast.error("Your player session expired. Set up your player again.", {
-        id: "player-session-expired",
-      });
-    };
-
-    socketInstance.on("connect", handleConnect);
-    socketInstance.on("disconnect", handleDisconnect);
-    socketInstance.on("connect_error", handleConnectError);
-
-    return () => {
-      socketInstance.off("connect", handleConnect);
-      socketInstance.off("disconnect", handleDisconnect);
-      socketInstance.off("connect_error", handleConnectError);
-    };
-  }, [
-    activeUser,
-    clearGuestProfile,
-    clearSocketInstance,
-    setSocketInstance,
-    socketInstance,
-  ]);
 
   return (
     <>
@@ -329,97 +207,29 @@ const LobbyPage = () => {
           </div>
 
           <aside className="rounded-2xl border border-[#e5e7eb] bg-white p-4 text-[#0f172a] elev-accent sm:p-5">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm font-semibold text-[#475569]">
-                  Host controls
-                </p>
-                <h2 className="mt-1 text-3xl font-bold tracking-[-0.02em] [font-family:'Space_Grotesk',Inter,ui-sans-serif]">
-                  Create room
-                </h2>
-              </div>
-              <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-[#ccfbf1] bg-[#f0fdfa] text-[#0f766e]">
-                <Settings2 className="h-5 w-5" />
-              </div>
-            </div>
-
-            <div className="mt-5 flex items-center justify-between gap-3 border-y border-[#e5e7eb] py-4">
-              <div className="flex min-w-0 items-center gap-3">
-                <AvatarBadge
-                  avatar={guestProfile?.avatar}
-                  name={guestProfile?.username}
-                  className="h-12 w-12 rounded-xl"
-                />
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#64748b]">
-                    Playing as
-                  </p>
-                  <p className="truncate text-lg font-bold text-[#0f172a]">
-                    {guestProfile?.username || "No player yet"}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={resetProfile}
-                className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-[#e5e7eb] bg-white px-3 py-2 text-sm font-semibold text-[#334155] elev-1 transition hover:border-[#0f172a] hover:text-[#0f172a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f766e]"
-              >
-                <UserRound className="h-4 w-4" />
-                {guestProfile ? "Change" : "Set up"}
-              </button>
-            </div>
-
-            <SettingsControls
-              settings={settingsDraft}
-              setSettings={setSettingsDraft}
-              disabled={false}
+            <RoomHostControls
+              guestProfile={guestProfile}
+              activeUser={activeUser}
+              settingsDraft={settingsDraft}
+              setSettingsDraft={setSettingsDraft}
+              isSocketReady={isSocketReady}
+              isCreating={isCreating}
+              resetProfile={resetProfile}
+              createRoom={() => createRoom(resetProfile)}
             />
-
-            <button
-              type="button"
-              className="mt-5 inline-flex h-14 w-full items-center justify-center gap-2 rounded-lg bg-[#0f172a] px-4 text-base font-bold text-white elev-3 transition hover:bg-[#1e293b] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f766e] disabled:cursor-not-allowed disabled:opacity-60"
-              onClick={createRoom}
-            >
-              <Play className="h-5 w-5 fill-white" />
-              {!activeUser
-                ? "Set up player first"
-                : isSocketReady
-                  ? "Create game room"
-                  : "Connecting server"}
-            </button>
-
-            <p className="mt-4 rounded-lg border border-[#e5e7eb] bg-[#f3f4f6] px-3 py-2 text-center text-sm font-medium text-[#64748b]">
-              Invite friends with the room link after creation.
-            </p>
           </aside>
         </section>
       </main>
 
       {isProfileModalOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[#0f172a]/45 px-3 py-4 backdrop-blur-sm sm:px-6"
-          onClick={closeProfileModal}
+        <dialog
+          ref={profileDialog}
+          className="player-setup-dialog"
+          aria-labelledby="player-setup-title"
+          onCancel={(event) => event.preventDefault()}
         >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Player setup"
-            className="relative w-full max-w-4xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <button
-              type="button"
-              onClick={closeProfileModal}
-              className="absolute -right-2 -top-2 z-10 flex h-10 w-10 items-center justify-center rounded-xl border border-[#e5e7eb] bg-white text-[#0f172a] elev-2 transition hover:border-[#0f172a] hover:text-[#0f172a] sm:-right-3 sm:-top-3"
-              aria-label="Close player setup"
-            >
-              <X className="h-5 w-5" />
-            </button>
-            <div className="max-h-[calc(100vh-2rem)] overflow-y-auto cld-scroll rounded-2xl">
-              <GuestProfileSetup onSave={saveProfile} variant="modal" />
-            </div>
-          </div>
-        </div>
+          <GuestProfileSetup onSave={saveProfile} onClose={closeProfileModal} variant="modal" initialProfile={guestProfile} />
+        </dialog>
       )}
     </>
   );
@@ -1114,203 +924,6 @@ const GameSignal = ({
     </div>
     <p className="mt-2 text-sm font-semibold text-[#334155] tabular-nums">{value}</p>
   </div>
-);
-
-const SettingsControls = ({
-  settings,
-  setSettings,
-  disabled,
-}: {
-  settings: GameSettings;
-  setSettings: Dispatch<SetStateAction<GameSettings>>;
-  disabled: boolean;
-}) => {
-  const updateNumericSetting = (
-    key: NumericSettingKey,
-    value: number,
-    min: number,
-    max: number,
-  ) => {
-    setSettings((previous) => ({
-      ...previous,
-      [key]: clampNumber(value, min, max),
-    }));
-  };
-
-  return (
-    <div className="mt-5 divide-y divide-[#e5e7eb] border-y border-[#e5e7eb]">
-      <SettingSlider
-        label="Max players"
-        description="Room capacity"
-        value={settings.maxPlayers}
-        min={3}
-        max={10}
-        disabled={disabled}
-        onChange={(value) => updateNumericSetting("maxPlayers", value, 3, 10)}
-      />
-      <SettingSlider
-        label="Drawing cycles"
-        description="Rounds before voting"
-        value={settings.turnCyclesBeforeVote}
-        min={1}
-        max={5}
-        disabled={disabled}
-        onChange={(value) =>
-          updateNumericSetting("turnCyclesBeforeVote", value, 1, 5)
-        }
-      />
-      <StrokeSetting
-        value={settings.maxStrokesPerTurn}
-        disabled={disabled}
-        onChange={(value) =>
-          updateNumericSetting("maxStrokesPerTurn", value, 1, 3)
-        }
-      />
-      <ToggleSetting
-        label="Draft undo"
-        description="Players can undo before submitting"
-        checked={settings.allowUndo}
-        disabled={disabled}
-        onChange={(checked) =>
-          setSettings((previous) => ({
-            ...previous,
-            allowUndo: checked,
-          }))
-        }
-      />
-      <ToggleSetting
-        label="Host removal"
-        description="Host can remove players in the lobby"
-        checked={settings.allowKick}
-        disabled={disabled}
-        onChange={(checked) =>
-          setSettings((previous) => ({
-            ...previous,
-            allowKick: checked,
-          }))
-        }
-      />
-    </div>
-  );
-};
-
-const SettingSlider = ({
-  label,
-  description,
-  value,
-  min,
-  max,
-  disabled,
-  onChange,
-}: {
-  label: string;
-  description: string;
-  value: number;
-  min: number;
-  max: number;
-  disabled: boolean;
-  onChange: (value: number) => void;
-}) => (
-  <label className="block py-4">
-    <div className="flex items-start justify-between gap-3">
-      <div>
-        <p className="font-bold text-[#0f172a]">{label}</p>
-        <p className="mt-1 text-sm font-medium text-[#64748b]">
-          {description}
-        </p>
-      </div>
-      <output className="rounded-lg border border-[#e5e7eb] bg-[#f3f4f6] px-3 py-1 text-lg font-bold text-[#0f172a] tabular-nums">
-        {value}
-      </output>
-    </div>
-    <input
-      type="range"
-      min={min}
-      max={max}
-      value={value}
-      disabled={disabled}
-      onChange={(event) => onChange(Number(event.currentTarget.value))}
-      className="mt-4 h-2 w-full accent-[#0f172a] disabled:cursor-not-allowed disabled:opacity-50"
-    />
-  </label>
-);
-
-const StrokeSetting = ({
-  value,
-  disabled,
-  onChange,
-}: {
-  value: number;
-  disabled: boolean;
-  onChange: (value: number) => void;
-}) => (
-  <div className="py-4">
-    <div className="flex items-start justify-between gap-3">
-      <div>
-        <p className="font-bold text-[#0f172a]">Strokes per turn</p>
-        <p className="mt-1 text-sm font-medium text-[#64748b]">
-          Server limit is 3
-        </p>
-      </div>
-      <div className="grid grid-cols-[40px_48px_40px] items-center gap-2">
-        <button
-          type="button"
-          disabled={disabled || value <= 1}
-          onClick={() => onChange(value - 1)}
-          className="flex h-10 items-center justify-center rounded-lg border border-[#e5e7eb] bg-white text-[#334155] elev-1 transition hover:border-[#0f172a] hover:text-[#0f172a] disabled:cursor-not-allowed disabled:opacity-40"
-          aria-label="Reduce strokes per turn"
-        >
-          <Minus className="h-4 w-4" />
-        </button>
-        <span className="flex h-10 items-center justify-center rounded-lg border border-[#ccfbf1] bg-[#f0fdfa] text-lg font-bold text-[#0f766e] tabular-nums">
-          {value}
-        </span>
-        <button
-          type="button"
-          disabled={disabled || value >= 3}
-          onClick={() => onChange(value + 1)}
-          className="flex h-10 items-center justify-center rounded-lg border border-[#e5e7eb] bg-white text-[#334155] elev-1 transition hover:border-[#0f172a] hover:text-[#0f172a] disabled:cursor-not-allowed disabled:opacity-40"
-          aria-label="Increase strokes per turn"
-        >
-          <Plus className="h-4 w-4" />
-        </button>
-      </div>
-    </div>
-  </div>
-);
-
-const ToggleSetting = ({
-  label,
-  description,
-  checked,
-  disabled,
-  onChange,
-}: {
-  label: string;
-  description: string;
-  checked: boolean;
-  disabled: boolean;
-  onChange: (checked: boolean) => void;
-}) => (
-  <label className="flex cursor-pointer items-center justify-between gap-4 py-4">
-    <span>
-      <span className="block font-bold text-[#0f172a]">{label}</span>
-      <span className="mt-1 block text-sm font-medium text-[#64748b]">
-        {description}
-      </span>
-    </span>
-    <span className="relative inline-flex h-8 w-14 shrink-0 items-center">
-      <input
-        type="checkbox"
-        checked={checked}
-        disabled={disabled}
-        onChange={(event) => onChange(event.currentTarget.checked)}
-        className="peer sr-only"
-      />
-      <span className="absolute inset-0 rounded-full border border-[#e5e7eb] bg-[#f3f4f6] transition peer-checked:border-[#0f766e] peer-checked:bg-[#f0fdfa] peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[#0f766e] peer-disabled:opacity-40" />
-      <span className="absolute left-1 h-6 w-6 rounded-full bg-[#94a3b8] transition peer-checked:translate-x-6 peer-checked:bg-[#0f766e]" />
-    </span>
-  </label>
 );
 
 export default LobbyPage;
