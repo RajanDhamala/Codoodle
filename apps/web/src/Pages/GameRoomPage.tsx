@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { validate as isValidUuid } from "uuid";
 import { createSocket } from "../Utils/socket"
 import useRoomStore from "@/Zustand/RoomStore";
-import { Brush, CheckCircle2, Circle, Clock, Copy, Crown, Eraser, Flame, KeyRound, LogOut, Menu, MessageCircle, Minus, MousePointer2, Palette, Play, RotateCcw, Send, ShieldCheck, Sparkles, Square, Trophy, UserX, Users, Volume2, X } from "lucide-react";
+import { Brush, Circle, Clock, Copy, Crown, Eraser, KeyRound, LogOut, Menu, MessageCircle, Minus, MousePointer2, Palette, Play, RotateCcw, Send, ShieldCheck, Sparkles, Square, Trophy, UserX, Users, Volume2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
 import type React from "react";
 import useSocketStore from "../SocketStore";
@@ -42,6 +42,7 @@ const STREAM_FLUSH_INTERVAL_MS = Number.isFinite(configuredStreamFlushInterval)
   ? Math.min(1000, Math.max(16, Math.round(configuredStreamFlushInterval)))
   : 50;
 const MAX_POINTS_PER_STREAM_PACKET = 32;
+const MIN_PLAYERS_TO_START = 2;
 
 const showSuccessToast = (message: string, id: string) => {
   toast.success(message, { id });
@@ -1528,7 +1529,7 @@ const GameRoom = () => {
   const canInspectStroke = hasStarted && activeTool === "select";
   const canUseDrawingTool = canDraw && activeTool !== "select";
   const canSubmitTurn = hasStarted && isMyTurn && hasSubmittedThisTurn;
-  const canStartGame = isAdminUser && room?.phase === "lobby" && connectedMembersCount >= 3;
+  const canStartGame = isAdminUser && room?.phase === "lobby" && connectedMembersCount >= MIN_PLAYERS_TO_START;
   const hasVoted = Boolean(activeUser?.id && room?.votedPlayerIds?.includes(activeUser.id));
   const turnHeading = isMyTurn
     ? strokesRemaining <= 0
@@ -1590,9 +1591,9 @@ const GameRoom = () => {
   }, [autoSubmit, hasStarted, isMyTurn, strokesRemaining, room?.currentPlayerId, room?.currentRound])
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#f6f7f9] text-[#0f172a] [font-family:Inter,ui-sans-serif,system-ui]">
-      <header className="sticky top-0 z-40 border-b border-[#e5e7eb] bg-[#f6f7f9]/85 px-4 py-4 backdrop-blur">
-        <div className="mx-auto flex max-w-[1500px] flex-wrap items-center justify-between gap-3">
+    <main className="relative min-h-screen overflow-hidden bg-[#fffefa] text-[#191923] [font-family:'Avenir_Next','Segoe_UI',ui-sans-serif,system-ui,sans-serif]">
+      <header className="sticky top-0 z-40 border-b border-[#e5e7eb] bg-[#fffefa]/95 px-4 py-3 backdrop-blur">
+        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
@@ -1604,23 +1605,27 @@ const GameRoom = () => {
             >
               {isMobileRoomMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 text-sm text-[#64748b]">
-                <span>Room</span>
-                <button
-                  onClick={CopyRoomCode}
-                  className="inline-flex items-center gap-2 rounded-lg border border-[#e5e7eb] bg-white px-2.5 py-1 font-mono text-[#334155] elev-1 transition hover:border-[#0f172a] hover:text-[#0f172a]"
-                >
-                  Copy invite
-                  <Copy className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              <h1 className="mt-1 truncate text-2xl font-bold tracking-[-0.02em] [font-family:'Space_Grotesk',Inter,ui-sans-serif]">
-                Drawing Imposter
+            <div className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-5">
+              <h1 className="truncate text-2xl font-bold tracking-[-0.04em]">
+                Coloodle<span className="text-[#c57f00]">.</span>
               </h1>
+              <p role="status" className="text-xs text-[#61616a] sm:border-l sm:border-[#e7e3da] sm:pl-5 sm:text-sm">
+                {hasStarted ? "Drawing" : isVotingPhase ? "Voting" : isResultPhase ? "Results" : "Waiting room"}
+                <span className="mx-2 text-[#b9b5ab]" aria-hidden="true">/</span>
+                {connectedMembersCount} player{connectedMembersCount === 1 ? "" : "s"}
+              </p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={CopyRoomCode}
+              className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-[#e5e7eb] bg-white px-3 py-2 text-sm font-semibold text-[#334155] elev-1 transition hover:border-[#0f172a] hover:text-[#0f172a] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#956008]"
+              aria-label="Copy room invite"
+            >
+              <Copy className="h-4 w-4" aria-hidden="true" />
+              <span className="hidden sm:inline">Invite friends</span>
+            </button>
             <button
               onClick={LeaveRoom}
               className="inline-flex items-center gap-2 rounded-lg border border-[#e5e7eb] bg-white px-3 py-2 text-sm font-semibold text-[#334155] elev-1 transition hover:border-[#0f172a] hover:text-[#0f172a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f766e]"
@@ -1650,10 +1655,10 @@ const GameRoom = () => {
         />
       ) : null}
 
-      <div className="relative mx-auto grid max-w-[1500px] gap-4 px-4 pb-24 pt-4 sm:py-4 xl:grid-cols-[300px_minmax(0,1fr)_340px]">
+      <div className="relative mx-auto grid max-w-[1600px] gap-4 px-4 pb-24 pt-4 sm:py-4 xl:grid-cols-[300px_minmax(0,1fr)_300px]">
         <aside
           id="mobile-room-menu"
-          className={`fixed inset-y-0 left-0 z-[60] order-1 w-[min(88vw,360px)] space-y-4 overflow-y-auto bg-[#f6f7f9] p-4 shadow-2xl transition-transform duration-200 sm:visible sm:static sm:z-auto sm:w-auto sm:translate-x-0 sm:overflow-visible sm:bg-transparent sm:p-0 sm:shadow-none sm:transition-none xl:order-1 ${isMobileRoomMenuOpen ? "visible translate-x-0" : "invisible -translate-x-full"}`}
+          className={`fixed inset-y-0 left-0 z-[60] order-1 w-[min(88vw,360px)] space-y-4 overflow-y-auto bg-[#fffefa] p-4 shadow-2xl transition-transform duration-200 sm:visible sm:static sm:z-auto sm:w-auto sm:translate-x-0 sm:overflow-visible sm:bg-transparent sm:p-0 sm:shadow-none sm:transition-none xl:order-1 ${isMobileRoomMenuOpen ? "visible translate-x-0" : "invisible -translate-x-full"}`}
           role={isMobileRoomMenuOpen ? "dialog" : undefined}
           aria-modal={isMobileRoomMenuOpen ? "true" : undefined}
           aria-label="Players and turn information"
@@ -1673,35 +1678,41 @@ const GameRoom = () => {
             </button>
           </div>
           {hasStarted ? (
-            <Panel className="hidden sm:block">
-              <p className="text-sm font-medium text-[#64748b]">Turn</p>
-              <h2 className="mt-1 text-lg font-bold text-[#0f172a]">
-                {turnHeading}
-              </h2>
-              <p className="mt-1 text-sm text-[#64748b]">
-                Round {room?.currentRound || 1}/{room?.maxRounds || 1}
-              </p>
+            <Panel className="hidden !border-[#e7e3da] sm:block">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-[#777780]">{roleInfo ? (roleInfo.role === "imposter" ? "Your role" : "Your word") : "Current turn"}</p>
+                <span className="text-xs font-medium tabular-nums text-[#61616a]">
+                  Round {room?.currentRound || 1}/{room?.maxRounds || 1}
+                </span>
+              </div>
               {roleInfo ? (
-                <p className="mt-2 text-sm font-semibold text-[#0f766e]">
-                  {roleInfo.role === "imposter"
-                    ? `You are the imposter. Category: ${roleInfo.category}`
-                    : `Word: ${roleInfo.word} | Category: ${roleInfo.category}`}
-                </p>
+                <div className="mt-2">
+                    <h2 className="break-words text-2xl font-semibold leading-8 tracking-[-0.03em] text-[#191923]">
+                      {roleInfo.role === "imposter" ? "Imposter" : roleInfo.word}
+                    </h2>
+                  <dl className="mt-1 flex flex-wrap items-baseline gap-x-2 text-xs leading-5">
+                    <dt className="text-[#777780]">Category</dt>
+                    <dd className="min-w-0 break-words text-[#61616a]">{roleInfo.category}</dd>
+                  </dl>
+                  {roleInfo.role === "imposter" ? (
+                    <p className="mt-2 text-xs leading-5 text-[#777780]">Blend in. Only the artists know the word.</p>
+                  ) : null}
+                </div>
               ) : null}
+              <p className="mt-4 break-words border-t border-[#eeeae2] pt-3 text-sm leading-5 text-[#61616a]">
+                {turnHeading}
+              </p>
             </Panel>
           ) : null}
 
-          <Panel>
+          <Panel className="!border-[#e7e3da]">
             <div className="flex items-center justify-between">
-              <h2 className="flex items-center gap-2 font-bold text-[#0f172a]">
-                <Users className="h-4 w-4 text-[#0f766e]" />
-                Players
-              </h2>
-              <span className="rounded-full border border-[#e5e7eb] bg-[#f3f4f6] px-2 py-1 text-xs font-semibold text-[#334155]">
-                {visibleMembers.length}
+              <h2 className="text-sm font-semibold text-[#191923]">Players</h2>
+              <span className="text-xs tabular-nums text-[#777780]">
+                {connectedMembersCount} online
               </span>
             </div>
-            <div className="cld-scroll mt-4 max-h-72 space-y-2 overflow-y-auto pr-1">
+            <div className="cld-scroll mt-2 max-h-[420px] overflow-y-auto">
               {visibleMembers.length > 0 ? (
                 visibleMembers.map((item, index) => {
                   const isCurrentMember = item.id === activeUser?.id;
@@ -1711,36 +1722,35 @@ const GameRoom = () => {
                   return (
                     <div
                       key={`${item.id ?? item.username ?? "member"}-${index}`}
-                      className={`flex items-center gap-3 rounded-xl border p-3 transition ${isTurnMember
-                        ? "border-[#bbf7d0] bg-[#ecfdf5]"
-                        : isAdminMember
-                          ? "border-[#fde68a] bg-[#fffbeb]"
-                          : "border-[#e5e7eb] bg-[#f3f4f6]"
-                        }`}
+                      className="flex items-center gap-3 border-b border-[#dcd7cd] py-4"
                     >
-                      <AvatarBadge
-                        avatar={item.avatarCode}
-                        name={item.username}
-                        className="h-10 w-10 rounded-xl"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-[#0f172a]">
-                          {item.username || "Player"}
-                        </p>
-                        <p className={`text-xs ${isAdminMember ? "text-[#92400e]" : "text-[#64748b]"}`}>
-                          {isTurnMember
-                            ? `Drawing now${turnSecondsRemaining ? ` · ${turnSecondsRemaining}s` : ""}`
-                            : isAdminMember ? (isCurrentMember ? "Admin, you" : "Admin") : isCurrentMember ? "You" : item.connected ? "Connected" : "Offline"}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {isAdminMember ? <Crown className="h-4 w-4 text-[#b45309]" /> : null}
-                        <span className={`h-2.5 w-2.5 rounded-full ${isTurnMember
+                      <div className="relative shrink-0">
+                        <AvatarBadge
+                          avatar={item.avatarCode}
+                          name={item.username}
+                          className="h-11 w-11 rounded-xl"
+                        />
+                        <span role="img" aria-label={item.connected ? "Connected" : "Offline"} title={item.connected ? "Connected" : "Offline"} className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white ${isTurnMember
                           ? "bg-[#10b981] shadow-[0_0_0_3px_rgba(16,185,129,0.18)]"
                           : item.connected
                             ? "bg-[#34d399]"
                             : "bg-[#cbd2da]"
                           }`} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="break-words text-sm font-semibold leading-5 text-[#191923]">
+                          {item.username || "Player"}
+                        </p>
+                        {[isAdminMember && "Host", isCurrentMember && "You", !item.connected && "Offline"].some(Boolean) ? (
+                          <p className="mt-0.5 text-xs text-[#777780]">
+                            {[isAdminMember && "Host", isCurrentMember && "You", !item.connected && "Offline"].filter(Boolean).join(" · ")}
+                          </p>
+                        ) : null}
+                        {isTurnMember ? (
+                          <p className="mt-0.5 flex items-center justify-between gap-2 text-xs text-[#047857]">
+                            Drawing <span className="tabular-nums">{turnSecondsRemaining}s</span>
+                          </p>
+                        ) : null}
                       </div>
                     </div>
                   );
@@ -1752,16 +1762,25 @@ const GameRoom = () => {
                 </div>
               )}
             </div>
+            {!hasStarted && !isVotingPhase && !isResultPhase ? (
+              <button
+                type="button"
+                onClick={CopyRoomCode}
+                className="mt-1 flex min-h-11 w-full items-center justify-between gap-3 pt-2 text-left text-xs font-medium text-[#61616a] transition hover:text-[#191923] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#956008]"
+              >
+                Invite friends
+                <Copy className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              </button>
+            ) : null}
           </Panel>
         </aside>
 
         <section className="order-2 min-w-0 space-y-4 xl:order-2">
           {!hasStarted && !isVotingPhase && !isResultPhase ? (
-            <WaitingForAdminStart
+            <WaitingRoomCanvas
               adminName={visibleAdmin?.username}
               connectedMembersCount={connectedMembersCount}
-              turnDurationSeconds={turnDurationSeconds}
-              maxStrokesPerTurn={maxStrokesPerTurn}
+              isAdminUser={isAdminUser}
             />
           ) : null}
 
@@ -1771,36 +1790,40 @@ const GameRoom = () => {
                 ? "!border-2 !border-[#22c55e] ring-2 ring-[#86efac] shadow-[0_12px_30px_rgba(22,163,74,0.16)]"
                 : "border-[#0f172a] elev-3"
                 }`}>
-                <div className="mb-3 rounded-xl border border-[#dbe4ea] bg-[#f8fafc] p-3 sm:hidden">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-[#64748b]">
-                        Turn
-                        <span className="h-1 w-1 rounded-full bg-[#94a3b8]" />
-                        Round {room?.currentRound || 1}/{room?.maxRounds || 1}
-                      </p>
-                      <h2 className="mt-1 truncate text-lg font-bold text-[#0f172a]">
+                <div className="mb-2 border-b border-[#eeeae2] pb-2 sm:hidden">
+                  <div className="flex items-center gap-2">
+                    <AvatarBadge
+                      avatar={currentPlayerAvatar}
+                      name={currentPlayerName}
+                      className="h-6 w-6 shrink-0 rounded-full"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <h2 className="truncate text-[13px] font-semibold leading-5 text-[#191923]" title={turnHeading}>
                         {turnHeading}
                       </h2>
                     </div>
+                    <span className="shrink-0 text-[11px] tabular-nums text-[#777780]" aria-label={`Round ${room?.currentRound || 1} of ${room?.maxRounds || 1}`}>
+                      R{room?.currentRound || 1}/{room?.maxRounds || 1}
+                    </span>
                     <span
-                      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[#bbf7d0] bg-[#ecfdf5] px-2.5 py-1.5 text-sm font-bold text-[#047857] tabular-nums"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-md bg-[#ecfdf5] px-1.5 py-1 text-xs font-semibold text-[#047857] tabular-nums"
                       aria-label={`${turnSecondsRemaining} seconds remaining in this turn`}
                     >
-                      <Clock className="h-4 w-4" />
+                      <Clock className="h-3 w-3" aria-hidden="true" />
                       {turnSecondsRemaining}s
                     </span>
                   </div>
                   {roleInfo ? (
-                    <p className="mt-2 rounded-lg border border-[#99f6e4] bg-[#f0fdfa] px-2.5 py-2 text-sm font-semibold leading-5 text-[#0f766e]">
-                      {roleInfo.role === "imposter"
-                        ? `You are the imposter. Category: ${roleInfo.category}`
-                        : `Word: ${roleInfo.word} | Category: ${roleInfo.category}`}
-                    </p>
+                    <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs leading-5">
+                      <p className="min-w-0 break-words font-semibold text-[#191923]">
+                        {roleInfo.role === "imposter" ? "You’re the imposter" : `Word: ${roleInfo.word}`}
+                      </p>
+                      <p className="min-w-0 break-words text-[#777780]">Category: {roleInfo.category}</p>
+                    </div>
                   ) : null}
                 </div>
 
-                <div className="mb-3 flex">
+                <div className="mb-3 hidden sm:flex">
                   <div className={`inline-flex min-w-0 max-w-full items-center gap-2 rounded-full border py-1.5 pl-1.5 pr-3 elev-1 ${isMyTurn
                     ? "border-[#22c55e] bg-[#dcfce7] shadow-[0_0_0_3px_rgba(34,197,94,0.14)]"
                     : "border-[#e5e7eb] bg-white"
@@ -1827,7 +1850,7 @@ const GameRoom = () => {
                 <div className="relative mx-auto w-full max-w-[860px] overflow-hidden rounded-xl bg-white">
                   <canvas
                     ref={canvasRef}
-                    className="block h-[72vw] min-h-[300px] max-h-[380px] w-full bg-white sm:h-auto sm:min-h-0 sm:max-h-none"
+                    className="block h-[clamp(340px,58svh,620px)] w-full bg-white sm:h-auto"
                     style={{ cursor: canvasCursor, touchAction: hasStarted ? "none" : "auto" }}
                     aria-label={`${currentPlayerName} drawing canvas`}
                     onPointerDown={onMouseDown}
@@ -1837,7 +1860,7 @@ const GameRoom = () => {
                     onPointerUp={onMouseUp}
                     onPointerCancel={onMouseUp}
                   />
-                  <div className="pointer-events-none absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-md border border-[#e5e7eb] bg-white/90 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748b]">
+                  <div className="pointer-events-none absolute left-3 top-3 hidden items-center gap-1.5 rounded-md border border-[#e5e7eb] bg-white/90 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748b] sm:inline-flex">
                     <Brush className="h-3 w-3" />
                     Canvas
                   </div>
@@ -2015,17 +2038,17 @@ const GameRoom = () => {
         <aside className="order-3 space-y-4">
           <Panel
             id="mobile-chat"
-            className={`${isMobileChatOpen ? "fixed inset-x-3 bottom-20 z-[70] flex max-h-[calc(100vh-7rem)] flex-col shadow-2xl" : "hidden"} sm:static sm:block sm:max-h-none`}
+            className={`!border-[#e7e3da] ${isMobileChatOpen ? "fixed inset-x-3 bottom-20 z-[70] flex max-h-[calc(100vh-7rem)] flex-col shadow-2xl" : "hidden"} sm:static sm:block sm:max-h-none`}
             role={isMobileChatOpen ? "dialog" : undefined}
             aria-modal={isMobileChatOpen ? true : undefined}
           >
             <div className="flex items-center justify-between gap-3">
               <h2 className="flex items-center gap-2 font-bold text-[#0f172a]">
-                <MessageCircle className="h-4 w-4 text-[#0f766e]" />
+                <MessageCircle className="h-4 w-4 text-[#956008]" />
                 Chat
               </h2>
               <div className="flex items-center gap-2">
-                <span className="rounded-full border border-[#e5e7eb] bg-[#f3f4f6] px-2 py-1 text-xs font-semibold text-[#334155]">
+                <span className="rounded-full border border-[#e5e7eb] bg-[#faf9f6] px-2 py-1 text-xs font-semibold text-[#334155]">
                   {visibleMessages.length}
                 </span>
                 <button
@@ -2039,7 +2062,7 @@ const GameRoom = () => {
               </div>
             </div>
 
-            <div ref={chatMessagesRef} className="cld-scroll mt-4 flex h-[min(55vh,24rem)] min-h-0 flex-col gap-3 overflow-y-auto rounded-xl border border-[#e5e7eb] bg-[#f3f4f6] p-3 sm:h-64">
+            <div ref={chatMessagesRef} className="cld-scroll mt-4 flex h-[min(55vh,24rem)] min-h-0 flex-col gap-3 overflow-y-auto rounded-xl border border-[#e5e7eb] bg-[#faf9f6] p-3 sm:h-64">
 
               {visibleMessages.length > 0 ? (
                 visibleMessages.map((item, index) => {
@@ -2063,7 +2086,7 @@ const GameRoom = () => {
                           : "border border-[#e5e7eb] bg-white text-[#334155]"
                           }`}
                       >
-                        <p className={`mb-1 text-[11px] font-semibold ${isMine ? "text-white/80" : "text-[#0f766e]"}`}>
+                        <p className={`mb-1 text-[11px] font-semibold ${isMine ? "text-white/80" : "text-[#956008]"}`}>
                           {item.sender || "Player"}
                         </p>
                         <p className="break-words">{item.msg}</p>
@@ -2096,7 +2119,7 @@ const GameRoom = () => {
                 }}
                 placeholder="Message"
                 maxLength={280}
-                className="min-w-0 flex-1 rounded-xl border border-[#e5e7eb] bg-white px-3 py-2 text-sm text-[#0f172a] outline-none ring-[#0f766e]/25 transition placeholder:text-[#94a3b8] focus:border-[#0f766e] focus:ring-4"
+                className="min-w-0 flex-1 rounded-xl border border-[#e5e7eb] bg-white px-3 py-2 text-sm text-[#0f172a] outline-none ring-[#956008]/20 transition placeholder:text-[#94a3b8] focus:border-[#956008] focus:ring-4"
               />
               <button
                 type="submit"
@@ -2246,235 +2269,173 @@ const Panel = ({
   </section>
 );
 
-const WaitingForAdminStart = ({
+// Practice drawing is intentionally isolated from game strokes, stores, and sockets.
+// The fixed backing size preserves the sketch when the responsive layout resizes.
+const WaitingRoomCanvas = ({
   adminName,
   connectedMembersCount,
-  turnDurationSeconds,
-  maxStrokesPerTurn,
+  isAdminUser,
 }: {
   adminName?: string;
   connectedMembersCount: number;
-  turnDurationSeconds: number;
-  maxStrokesPerTurn: number;
+  isAdminUser: boolean;
 }) => {
-  const neededPlayers = Math.max(0, 3 - connectedMembersCount);
-  const readyPercent = Math.min(100, Math.round((connectedMembersCount / 3) * 100));
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const pointerRef = useRef<number | null>(null);
+  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const [tool, setTool] = useState<"brush" | "eraser">("brush");
+  const [color, setColor] = useState(colorOptions[0]);
+  const [size, setSize] = useState(4);
+  const neededPlayers = Math.max(0, MIN_PLAYERS_TO_START - connectedMembersCount);
+
+  const drawTo = (canvas: HTMLCanvasElement, clientX: number, clientY: number) => {
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    const bounds = canvas.getBoundingClientRect();
+    if (!bounds.width || !bounds.height) return;
+    const point = {
+      x: (clientX - bounds.left) * canvas.width / bounds.width,
+      y: (clientY - bounds.top) * canvas.height / bounds.height,
+    };
+    const previous = lastPointRef.current;
+    context.beginPath();
+    if (previous) {
+      context.moveTo(previous.x, previous.y);
+      context.lineTo(point.x, point.y);
+      context.stroke();
+    } else {
+      context.arc(point.x, point.y, context.lineWidth / 2, 0, Math.PI * 2);
+      context.fill();
+    }
+    lastPointRef.current = point;
+  };
+
+  const startDrawing = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!event.isPrimary || event.button !== 0 || pointerRef.current !== null) return;
+    const canvas = event.currentTarget;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    const bounds = canvas.getBoundingClientRect();
+    if (!bounds.width) return;
+    event.preventDefault();
+    canvas.setPointerCapture(event.pointerId);
+    pointerRef.current = event.pointerId;
+    lastPointRef.current = null;
+    context.globalCompositeOperation = tool === "eraser" ? "destination-out" : "source-over";
+    context.strokeStyle = color;
+    context.fillStyle = color;
+    context.lineWidth = (tool === "eraser" ? size * 4 : size) * canvas.width / bounds.width;
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    drawTo(canvas, event.clientX, event.clientY);
+  };
+
+  const moveDrawing = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (pointerRef.current !== event.pointerId) return;
+    const samples = event.nativeEvent.getCoalescedEvents?.() || [];
+    for (const sample of samples.length ? samples : [event.nativeEvent]) {
+      drawTo(event.currentTarget, sample.clientX, sample.clientY);
+    }
+  };
+
+  const stopDrawing = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (pointerRef.current !== event.pointerId) return;
+    if (event.type === "pointerup") drawTo(event.currentTarget, event.clientX, event.clientY);
+    pointerRef.current = null;
+    lastPointRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    if (pointerRef.current !== null && canvas.hasPointerCapture(pointerRef.current)) {
+      canvas.releasePointerCapture(pointerRef.current);
+    }
+    pointerRef.current = null;
+    lastPointRef.current = null;
+    canvas.getContext("2d")?.clearRect(0, 0, canvas.width, canvas.height);
+  };
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white elev-2">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#e5e7eb] px-5 py-3.5">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-[#64748b]">Lobby</p>
-          <h2 className="mt-1 text-2xl font-bold text-[#0f172a]">Waiting for the host</h2>
-          <p className="mt-1 max-w-xl text-sm leading-6 text-[#64748b]">
-            {neededPlayers > 0
-              ? `${neededPlayers} more player${neededPlayers === 1 ? "" : "s"} needed before this room can start.`
-              : "Everyone needed is connected. The host can start the round."}
-          </p>
-        </div>
-        <div className="inline-flex items-center gap-2 rounded-xl border border-[#bbf7d0] bg-[#ecfdf5] px-3 py-2 text-sm font-semibold text-[#047857]">
-          <CheckCircle2 className="h-4 w-4" />
-          {connectedMembersCount}/3 ready
-        </div>
+    <section className="overflow-hidden rounded-2xl border border-[#e7e3da] bg-white text-[#191923] elev-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#eeeae2] px-4 py-3">
+        <h2 className="flex items-center gap-2 text-sm font-semibold">
+          <Brush className="h-4 w-4 text-[#956008]" aria-hidden="true" />
+          Practice while waiting
+        </h2>
+        <span className="text-xs text-[#777780]">Only visible to you</span>
       </div>
 
-      <div className="p-4">
-        <div className="rounded-xl border border-[#e5e7eb] bg-[#f3f4f6] p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-[#64748b]">Round setup</p>
-              <h3 className="mt-1 text-lg font-bold text-[#0f172a]">Sketch warm-up</h3>
-            </div>
-            <div className="inline-flex items-center gap-2 rounded-xl border border-[#fed7aa] bg-[#fff7ed] px-3 py-2 text-sm font-semibold text-[#c2410c]">
-              <Flame className="h-4 w-4" />
-              {adminName || "Host"}
-            </div>
-          </div>
-
-          <div className="relative mt-4 h-[300px] overflow-hidden rounded-xl border border-[#e5e7eb] bg-white text-[#0f172a] elev-1 sm:h-[330px]">
-            <div className="absolute left-4 top-4 inline-flex items-center gap-2 rounded-full bg-[#0f172a] px-3 py-1.5 text-xs font-semibold text-white">
-              <Brush className="h-3.5 w-3.5 text-[#5eead4]" />
-              Live sketch
-            </div>
-            <svg
-              aria-hidden="true"
-              className="absolute inset-x-6 top-12 h-[68%] w-[calc(100%-3rem)]"
-              viewBox="0 0 720 260"
-              preserveAspectRatio="xMidYMid meet"
-            >
-              <defs>
-                <filter id="lobby-scene-shadow" x="-20%" y="-20%" width="140%" height="140%">
-                  <feDropShadow dx="0" dy="8" stdDeviation="8" floodColor="#18181b" floodOpacity="0.16" />
-                </filter>
-                <filter id="lobby-pencil-glow" x="-80%" y="-80%" width="260%" height="260%">
-                  <feGaussianBlur stdDeviation="3" result="blur" />
-                  <feMerge>
-                    <feMergeNode in="blur" />
-                    <feMergeNode in="SourceGraphic" />
-                  </feMerge>
-                </filter>
-              </defs>
-
-              <path d="M44 218 H676" fill="none" stroke="#d4d4d8" strokeLinecap="round" strokeWidth="10" />
-
-              <g opacity="0">
-                <animate attributeName="opacity" dur="5.8s" keyTimes="0;0.08;0.86;1" repeatCount="indefinite" values="0;1;1;0" />
-                <circle cx="592" cy="50" r="34" fill="#fde047" />
-                <path
-                  d="M592 6 V24 M592 76 V96 M548 50 H566 M618 50 H638 M560 18 L572 30 M612 70 L626 84 M624 18 L612 30 M572 70 L558 84"
-                  fill="none"
-                  stroke="#f97316"
-                  strokeLinecap="round"
-                  strokeWidth="8"
-                  strokeDasharray="210"
-                  strokeDashoffset="210"
-                >
-                  <animate attributeName="stroke-dashoffset" dur="5.8s" keyTimes="0;0.16;0.72;1" repeatCount="indefinite" values="210;0;0;210" />
-                </path>
-              </g>
-
-              <g opacity="0" filter="url(#lobby-scene-shadow)">
-                <animate attributeName="opacity" begin="0.25s" dur="5.8s" keyTimes="0;0.1;0.78;1" repeatCount="indefinite" values="0;1;1;0" />
-                <path
-                  d="M342 70 C352 48 382 48 392 70 C404 62 428 68 430 88 C432 108 412 118 392 112 H326 C304 112 292 96 304 80 C312 68 328 66 342 70Z"
-                  fill="#e0f2fe"
-                  stroke="#14b8a6"
-                  strokeWidth="6"
-                  strokeLinejoin="round"
-                  strokeDasharray="360"
-                  strokeDashoffset="360"
-                >
-                  <animate attributeName="stroke-dashoffset" begin="0.25s" dur="5.8s" keyTimes="0;0.2;0.72;1" repeatCount="indefinite" values="360;0;0;360" />
-                </path>
-              </g>
-
-              <g filter="url(#lobby-scene-shadow)">
-                <path d="M138 212 L154 122 L186 122 L204 212 Z" fill="#a16207" opacity="0">
-                  <animate attributeName="opacity" begin="0.6s" dur="5.8s" keyTimes="0;0.08;0.76;1" repeatCount="indefinite" values="0;1;1;0" />
-                </path>
-                <path
-                  d="M138 212 L154 122 L186 122 L204 212 Z"
-                  fill="none"
-                  stroke="#713f12"
-                  strokeLinejoin="round"
-                  strokeWidth="8"
-                  strokeDasharray="300"
-                  strokeDashoffset="300"
-                >
-                  <animate attributeName="stroke-dashoffset" begin="0.6s" dur="5.8s" keyTimes="0;0.18;0.74;1" repeatCount="indefinite" values="300;0;0;300" />
-                </path>
-                <path
-                  d="M94 122 C84 82 124 58 154 78 C166 42 222 46 230 88 C266 92 276 142 236 158 C218 194 158 186 148 156 C116 164 86 150 94 122Z"
-                  fill="#22c55e"
-                  opacity="0"
-                >
-                  <animate attributeName="opacity" begin="0.85s" dur="5.8s" keyTimes="0;0.08;0.76;1" repeatCount="indefinite" values="0;1;1;0" />
-                </path>
-                <path
-                  d="M94 122 C84 82 124 58 154 78 C166 42 222 46 230 88 C266 92 276 142 236 158 C218 194 158 186 148 156 C116 164 86 150 94 122Z"
-                  fill="none"
-                  stroke="#15803d"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="8"
-                  strokeDasharray="560"
-                  strokeDashoffset="560"
-                >
-                  <animate attributeName="stroke-dashoffset" begin="0.85s" dur="5.8s" keyTimes="0;0.24;0.74;1" repeatCount="indefinite" values="560;0;0;560" />
-                </path>
-                {[138, 184, 224].map((x, index) => (
-                  <circle key={`lobby-fruit-${index}`} cx={x} cy={index === 0 ? 118 : index === 1 ? 88 : 130} r="10" fill="#ef4444" opacity="0">
-                    <animate attributeName="opacity" begin={`${1.15 + index * 0.12}s`} dur="5.8s" keyTimes="0;0.08;0.72;1" repeatCount="indefinite" values="0;1;1;0" />
-                  </circle>
-                ))}
-              </g>
-
-              <g filter="url(#lobby-scene-shadow)">
-                <path
-                  d="M342 180 L374 136 H510 C540 136 566 156 580 180 H620 C634 180 646 192 646 206 V218 H318 V202 C318 190 330 180 342 180Z"
-                  fill="#ef4444"
-                  opacity="0"
-                >
-                  <animate attributeName="opacity" begin="1.45s" dur="5.8s" keyTimes="0;0.08;0.7;1" repeatCount="indefinite" values="0;1;1;0" />
-                </path>
-                <path d="M386 146 H504 C522 146 540 160 550 180 H352 Z" fill="#bae6fd" opacity="0">
-                  <animate attributeName="opacity" begin="1.65s" dur="5.8s" keyTimes="0;0.08;0.68;1" repeatCount="indefinite" values="0;1;1;0" />
-                </path>
-                <path
-                  id="lobby-car-outline"
-                  d="M342 180 L374 136 H510 C540 136 566 156 580 180 H620 C634 180 646 192 646 206 V218 H318 V202 C318 190 330 180 342 180Z"
-                  fill="none"
-                  stroke="#991b1b"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="8"
-                  strokeDasharray="760"
-                  strokeDashoffset="760"
-                >
-                  <animate attributeName="stroke-dashoffset" begin="1.45s" dur="5.8s" keyTimes="0;0.28;0.7;1" repeatCount="indefinite" values="760;0;0;760" />
-                </path>
-                <path
-                  d="M386 146 H504 C522 146 540 160 550 180 H352 Z M454 146 V180"
-                  fill="none"
-                  stroke="#0369a1"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="6"
-                  strokeDasharray="330"
-                  strokeDashoffset="330"
-                >
-                  <animate attributeName="stroke-dashoffset" begin="1.85s" dur="5.8s" keyTimes="0;0.2;0.66;1" repeatCount="indefinite" values="330;0;0;330" />
-                </path>
-                {[384, 574].map((x, index) => (
-                  <g key={`lobby-wheel-${index}`} opacity="0">
-                    <animate attributeName="opacity" begin={`${2.15 + index * 0.15}s`} dur="5.8s" keyTimes="0;0.08;0.64;1" repeatCount="indefinite" values="0;1;1;0" />
-                    <circle cx={x} cy="218" r="24" fill="#18181b" />
-                    <circle cx={x} cy="218" r="10" fill="#e5e7eb" />
-                  </g>
-                ))}
-              </g>
-
-              <g filter="url(#lobby-pencil-glow)">
-                <path d="M0 -10 L22 0 L0 10 L6 0 Z" fill="#18181b" />
-                <circle cx="6" cy="0" r="3" fill="#f97316" />
-                <animateMotion dur="5.8s" repeatCount="indefinite" rotate="auto">
-                  <mpath href="#lobby-car-outline" />
-                </animateMotion>
-              </g>
-            </svg>
-
-            <div className="absolute bottom-4 left-4 right-4 flex flex-wrap gap-2">
-              <div className="rounded-full border border-[#e5e7eb] bg-white px-3 py-2 elev-1">
-                <p className="text-xs font-semibold text-[#334155]">{connectedMembersCount}/3 players</p>
-              </div>
-              <div className="rounded-full border border-[#e5e7eb] bg-white px-3 py-2 elev-1">
-                <p className="text-xs font-semibold text-[#334155]">{turnDurationSeconds}s turns</p>
-              </div>
-              <div className="rounded-full border border-[#ccfbf1] bg-[#f0fdfa] px-3 py-2 elev-1">
-                <p className="text-xs font-semibold text-[#0f766e]">{maxStrokesPerTurn} stroke{maxStrokesPerTurn === 1 ? "" : "s"}</p>
-              </div>
-              <div className="rounded-full border border-[#fed7aa] bg-[#fff7ed] px-3 py-2 elev-1">
-                <p className="text-xs font-semibold text-[#c2410c]">{readyPercent}% ready</p>
-              </div>
-            </div>
-          </div>
+      <div className="p-3">
+        <div className="overflow-hidden rounded-lg bg-white">
+          <canvas
+            ref={canvasRef}
+            width={1200}
+            height={800}
+            aria-label="Private practice canvas. Draw with a mouse, pen, or touch."
+            className="block aspect-[3/2] w-full touch-none select-none"
+            style={{ cursor: tool === "eraser" ? eraserCursor : "crosshair" }}
+            onPointerDown={startDrawing}
+            onPointerMove={moveDrawing}
+            onPointerUp={stopDrawing}
+            onPointerCancel={stopDrawing}
+            onLostPointerCapture={stopDrawing}
+          >
+            Your browser does not support the drawing canvas.
+          </canvas>
         </div>
-
-        <section className="mt-4 rounded-xl border border-[#e5e7eb] bg-[#f3f4f6] p-4">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-
-            <div className="min-w-36">
-              <p className="text-sm font-medium text-[#64748b]">Start readiness</p>
-              <p className="mt-2 text-lg font-bold text-[#0f172a]">{readyPercent}%</p>
-            </div>
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-[#eeeae2] pt-3" role="group" aria-label="Practice drawing tools">
+          <div className="flex items-center gap-1">
+            {([{ value: "brush", label: "Brush", icon: Brush }, { value: "eraser", label: "Eraser", icon: Eraser }] as const).map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                title={option.label}
+                aria-label={option.label}
+                aria-pressed={tool === option.value}
+                onClick={() => setTool(option.value)}
+                className={`inline-flex h-11 w-11 items-center justify-center rounded-lg border transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#956008] ${tool === option.value ? "border-[#ffbd32] bg-[#ffbd32] text-[#191923] elev-1" : "border-[#e7e3da] bg-white text-[#61616a] hover:bg-[#fffefa]"}`}
+              >
+                <option.icon className="h-4 w-4" aria-hidden="true" />
+              </button>
+            ))}
           </div>
-          <div className="mt-4 h-2 overflow-hidden rounded-full bg-[#e5e7eb]">
-            <div
-              className="h-full rounded-full bg-[#f97316] transition-[width]"
-              style={{ width: `${readyPercent}%` }}
-            />
+          <div className="flex flex-wrap items-center" role="group" aria-label="Brush color">
+            {colorOptions.map((option) => (
+              <button
+                key={option}
+                type="button"
+                aria-label={`Use color ${option}`}
+                aria-pressed={color === option}
+                onClick={() => { setColor(option); setTool("brush"); }}
+                className="flex h-10 w-9 items-center justify-center rounded-lg focus-visible:outline-2 focus-visible:outline-[#956008]"
+              >
+                <span className={`h-5 w-5 rounded-full border-2 ${color === option ? "border-white ring-2 ring-[#191923]" : "border-black/10"}`} style={{ backgroundColor: option }} />
+              </button>
+            ))}
           </div>
-        </section>
+          <label className="flex min-h-11 items-center gap-2 text-xs font-medium text-[#61616a]">
+            Size
+            <input type="range" min={2} max={20} value={size} onChange={(event) => setSize(Number(event.currentTarget.value))} className="w-20 accent-[#191923]" />
+            <span className="w-8 tabular-nums">{size} px</span>
+          </label>
+          <button type="button" onClick={clearCanvas} title="Clear canvas" aria-label="Clear canvas" className="ml-auto inline-flex h-11 w-11 items-center justify-center rounded-lg border border-[#e7e3da] text-[#61616a] transition hover:bg-[#faf9f6] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#956008]">
+            <RotateCcw className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
+        <div className="mt-3 flex flex-wrap justify-between gap-x-4 gap-y-1 text-xs leading-5 text-[#777780]">
+          <p role="status">
+            {neededPlayers > 0
+              ? `Invite ${neededPlayers} more player${neededPlayers === 1 ? "" : "s"} to start.`
+              : isAdminUser
+                ? "Ready when you are. Start using host controls."
+                : `Waiting for ${adminName || "the host"} to start.`}
+          </p>
+          <p>Practice clears when the game starts.</p>
+        </div>
       </div>
     </section>
   );
@@ -2497,15 +2458,15 @@ const LobbyStartControls = ({
   onMaxStrokesChange: (value: number) => void;
   onStart: () => void;
 }) => (
-  <Panel className="border-[#fed7aa] bg-[#fff7ed]">
+  <Panel className="!border-[#e7e3da]">
     <div className="flex items-center justify-between gap-3">
       <div>
-        <p className="text-sm font-medium text-[#c2410c]">Host controls</p>
+        <p className="text-sm font-medium text-[#61616a]">Host controls</p>
         <h2 className="mt-1 text-lg font-bold text-[#0f172a]">
           {isAdminUser ? "Start when ready" : "Waiting for host"}
         </h2>
       </div>
-      <Flame className="h-5 w-5 text-[#f97316]" />
+      <Crown className="h-5 w-5 text-[#956008]" aria-hidden="true" />
     </div>
 
     <label className="mt-4 block text-sm font-medium text-[#334155]">
@@ -2527,7 +2488,7 @@ const LobbyStartControls = ({
           value={turnDurationSeconds}
           disabled={!isAdminUser}
           onChange={(event) => onTurnDurationChange(Number(event.currentTarget.value))}
-          className="h-10 w-20 rounded-xl border border-[#e5e7eb] bg-white px-3 text-sm text-[#0f172a] outline-none ring-[#0f766e]/25 transition focus:border-[#0f766e] focus:ring-4 disabled:cursor-not-allowed disabled:opacity-50"
+          className="h-10 w-20 rounded-xl border border-[#e5e7eb] bg-white px-3 text-sm text-[#0f172a] outline-none ring-[#956008]/20 transition focus:border-[#956008] focus:ring-4 disabled:cursor-not-allowed disabled:opacity-50"
         />
       </div>
     </label>
@@ -2551,11 +2512,11 @@ const LobbyStartControls = ({
           value={maxStrokesPerTurn}
           disabled={!isAdminUser}
           onChange={(event) => onMaxStrokesChange(Math.min(3, Math.max(1, Number(event.currentTarget.value))))}
-          className="h-10 w-20 rounded-xl border border-[#e5e7eb] bg-white px-3 text-sm text-[#0f172a] outline-none ring-[#0f766e]/25 transition focus:border-[#0f766e] focus:ring-4 disabled:cursor-not-allowed disabled:opacity-50"
+          className="h-10 w-20 rounded-xl border border-[#e5e7eb] bg-white px-3 text-sm text-[#0f172a] outline-none ring-[#956008]/20 transition focus:border-[#956008] focus:ring-4 disabled:cursor-not-allowed disabled:opacity-50"
         />
       </div>
-      <span className="mt-1 block text-xs font-medium text-[#c2410c]">
-        Server enforced, max 3.
+      <span className="mt-1 block text-xs font-medium text-[#61616a]">
+        Up to 3 strokes per turn.
       </span>
     </label>
 
@@ -2563,14 +2524,14 @@ const LobbyStartControls = ({
       <button
         onClick={onStart}
         disabled={!canStartGame}
-        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#0f172a] px-4 py-3 text-sm font-bold text-white elev-2 transition hover:bg-[#334155] disabled:cursor-not-allowed disabled:opacity-40"
+        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#ffbd32] px-4 py-3 text-sm font-bold text-[#191923] elev-2 transition hover:bg-[#efad22] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#956008] disabled:cursor-not-allowed disabled:bg-[#f0eee8] disabled:text-[#777780]"
       >
         <Play className="h-4 w-4" />
         Start game
       </button>
     ) : (
       <div className="mt-4 rounded-xl border border-[#e5e7eb] bg-white px-3 py-3 text-sm font-medium text-[#64748b]">
-        Host starts the room after 3 players connect.
+        Host starts the room after {MIN_PLAYERS_TO_START} players connect.
       </div>
     )}
   </Panel>
@@ -2593,23 +2554,22 @@ const VotingModal = ({
   eligibleVotes: number;
   onVote: (targetId: string) => void;
 }) => (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0f172a]/45 px-4 py-6 backdrop-blur-sm">
-    <div className="w-full max-w-2xl rounded-2xl border border-[#e5e7eb] bg-white p-5 elev-modal">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e5e7eb] pb-4">
-        <div>
-          <p className="text-sm font-medium text-[#64748b]">Voting</p>
-          <h2 className="mt-1 text-xl font-bold text-[#0f172a]">Pick the imposter</h2>
-          <p className="mt-1 text-sm text-[#64748b]">
-            {votesCount}/{eligibleVotes} votes submitted
+  <div className="fixed inset-0 z-[90] flex items-center justify-center bg-[#191923]/55 px-4 py-6">
+    <div role="dialog" aria-modal="true" aria-labelledby="voting-title" aria-describedby="voting-description" className="max-h-[calc(100dvh-3rem)] w-full max-w-md overflow-y-auto overscroll-contain rounded-2xl border border-[#e7e3da] bg-[#fffefa] p-5 text-[#191923] elev-modal sm:p-6">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h2 id="voting-title" className="text-2xl font-semibold tracking-[-0.03em]">Who’s the imposter?</h2>
+          <p id="voting-description" className="mt-2 text-sm leading-6 text-[#61616a]">
+            {hasVoted ? "Your vote is in. Waiting for the results." : "Pick the player you think was faking it."}
           </p>
         </div>
-        <div className="inline-flex items-center gap-2 rounded-xl border border-[#fde68a] bg-[#fffbeb] px-3 py-2 text-sm font-semibold text-[#92400e]">
-          <Clock className="h-4 w-4" />
+        <div className="mt-1 inline-flex shrink-0 items-center gap-1.5 text-sm font-semibold tabular-nums text-[#61616a]" aria-label={`${secondsRemaining} seconds left to vote`}>
+          <Clock className="h-4 w-4" aria-hidden="true" />
           {secondsRemaining}s
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+      <div className="mt-6 space-y-2">
         {players.length > 0 ? (
           players.map((player) => (
             <button
@@ -2617,40 +2577,35 @@ const VotingModal = ({
               type="button"
               disabled={hasVoted || player.id === activeUserId}
               onClick={() => onVote(player.id)}
-              className="flex min-h-20 items-center gap-3 rounded-xl border border-[#e5e7eb] bg-white p-3 text-left elev-1 transition hover:-translate-y-0.5 hover:border-[#0f172a] hover:bg-[#f3f4f6] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
+              className="group flex min-h-20 w-full items-center gap-3 rounded-xl border border-[#e7e3da] bg-white p-3 text-left elev-1 transition enabled:hover:border-[#c79a38] enabled:hover:bg-[#fff8e7] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#956008] disabled:cursor-not-allowed disabled:opacity-60"
             >
               <AvatarBadge
                 avatar={player.avatarCode}
                 name={player.username}
-                className="h-12 w-12 rounded-xl"
+                className="h-11 w-11 shrink-0 rounded-xl"
               />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-[#0f172a]">{player.username || "Player"}</p>
-                <p className="mt-1 text-xs text-[#64748b]">
-                  {player.connected ? "Connected" : "Offline"}
-                </p>
+                <p className="break-words text-sm font-semibold text-[#191923]">{player.username || "Player"}</p>
+                {!player.connected ? <p className="mt-1 text-xs text-[#777780]">Offline</p> : null}
               </div>
-              <span className="rounded-lg border border-[#e5e7eb] bg-[#f3f4f6] px-2 py-1 text-xs font-semibold text-[#334155]">
+              <span className={`shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold ${hasVoted ? "text-[#777780]" : "bg-[#ffbd32] text-[#191923]"}`}>
                 {hasVoted ? "Locked" : "Vote"}
               </span>
             </button>
           ))
         ) : (
-          <div className="col-span-full rounded-xl border border-dashed border-[#e5e7eb] bg-[#f3f4f6] p-6 text-center text-sm font-medium text-[#64748b]">
+          <div className="py-6 text-center text-sm text-[#777780]">
             No voting options available
           </div>
         )}
       </div>
 
-      {hasVoted ? (
-        <p className="mt-4 rounded-xl border border-[#bbf7d0] bg-[#ecfdf5] px-3 py-2 text-sm font-medium text-[#047857]">
-          Vote locked. Results appear when the timer ends.
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-[#e7e3da] pt-4 text-xs leading-5 text-[#777780]">
+        <p className="tabular-nums">
+          {votesCount}/{eligibleVotes} votes in
         </p>
-      ) : (
-        <p className="mt-4 text-sm font-medium text-[#64748b]">
-          Voting closes automatically when the 15 second timer ends.
-        </p>
-      )}
+        <p>{hasVoted ? "Vote locked" : "One vote. Make it count."}</p>
+      </div>
     </div>
   </div>
 );
