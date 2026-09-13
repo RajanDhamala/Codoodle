@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { validate as isValidUuid } from "uuid";
 import { createSocket } from "../Utils/socket"
 import useRoomStore from "@/Zustand/RoomStore";
-import { Brush, Circle, Clock, Copy, Crown, Eraser, KeyRound, LogOut, Menu, MessageCircle, Minus, MousePointer2, Palette, Play, RotateCcw, Send, ShieldCheck, Sparkles, Square, Trophy, UserX, Users, Volume2, X } from "lucide-react";
+import { Brush, Circle, Clock, Copy, Eraser, KeyRound, LogOut, Menu, MessageCircle, Minus, MousePointer2, Palette, RotateCcw, Send, ShieldCheck, Sparkles, Square, Trophy, UserX, Users, Volume2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
 import type React from "react";
 import useSocketStore from "../SocketStore";
@@ -88,7 +88,17 @@ type RoomMember = {
   isAdmin?: boolean;
 };
 
-type RoomSettingsPayload = Partial<GameSettings> & {
+type LobbySettingKey = "maxPlayers" | "turnCyclesBeforeVote" | "turnDurationSeconds" | "maxStrokesPerTurn";
+
+type CustomWordSettings = {
+  customWords: string;
+  customWordCategory: string;
+  customWordsOnly: boolean;
+};
+type LobbySettingsPatch = Partial<Record<LobbySettingKey, number> & CustomWordSettings>;
+
+type RoomSettingsPayload = Partial<GameSettings & CustomWordSettings> & {
+  customWordCount?: number;
   owner?: RoomMember;
   turnDurationSeconds?: number;
   maxStrokesPerTurn?: number;
@@ -231,6 +241,8 @@ const GameRoom = () => {
   const latestActiveStrokeRef = useRef<unknown>(null)
   const [admin, setAdmin] = useState<RoomMember | null>(null)
   const [roleInfo, setRoleInfo] = useState<RoleInfo | null>(null)
+  const settingsUpdatePendingRef = useRef(false);
+  const [isUpdatingSettings, setIsUpdatingSettings] = useState(false);
   const [turnDurationSeconds, setTurnDurationSeconds] = useState(30)
   const [maxStrokesPerTurn, setMaxStrokesPerTurn] = useState(defaultGameSettings.maxStrokesPerTurn)
   const [now, setNow] = useState(Date.now())
@@ -417,7 +429,15 @@ const GameRoom = () => {
     }
 
     setRoomId(nextRoomId)
-    setRoom(data)
+    setRoom((previous) => ({
+      ...data,
+      settings: {
+        ...data.settings,
+        ...(data.settings?.customWords === undefined && previous?.settings?.customWords !== undefined
+          ? { customWords: previous.settings.customWords }
+          : {}),
+      },
+    }))
     setSettings(data.settings)
     applyMembersSnapshot(data.members || [], data.owner || data.settings?.owner)
     if (data.roleInfo) {
@@ -439,7 +459,31 @@ const GameRoom = () => {
     drawActiveStroke(latestActiveStrokeRef.current)
   }
 
+  const UpdateRoomSettings = async (settings: LobbySettingsPatch): Promise<boolean> => {
+    if (settingsUpdatePendingRef.current) return false;
+    if (!RoomId || !socketInstance?.connected) {
+      showErrorToast("Reconnect before changing room settings.", "room-settings");
+      return false;
+    }
+    settingsUpdatePendingRef.current = true;
+    setIsUpdatingSettings(true);
+    return new Promise((resolve) => {
+      socketInstance.timeout(5000).emit("update-room-settings", { roomId: RoomId, settings }, (error: Error | null, data?: RoomSyncPayload) => {
+        settingsUpdatePendingRef.current = false;
+        setIsUpdatingSettings(false);
+        if (error || !data?.success) {
+          showErrorToast(data?.message || "Could not save room settings. Try again.", "room-settings");
+          resolve(false);
+          return;
+        }
+        applyRoomSync(data);
+        resolve(true);
+      });
+    });
+  };
+
   const StartGame = () => {
+    if (settingsUpdatePendingRef.current) return;
     if (!RoomId || !isValidUuid(RoomId)) {
       showErrorToast("Join a room before starting.", "game-start");
       return;
@@ -1521,7 +1565,6 @@ const GameRoom = () => {
   const currentPlayer = visibleMembers.find((member) => member.id === room?.currentPlayerId);
   const isMyTurn = Boolean(activeUser?.id && room?.currentPlayerId === activeUser.id);
   const currentPlayerName = currentPlayer?.username || (isMyTurn ? activeUser?.username : "Player") || "Player";
-  const currentPlayerAvatar = currentPlayer?.avatarCode || (isMyTurn ? socketUserPayload?.avatarCode : undefined);
   const hasSubmittedThisTurn = Boolean(activeUser?.id && room?.turnSubmittedPlayerId === activeUser.id);
   const currentTurnStrokeCount = Number(room?.currentTurnStrokeCount || 0);
   const strokesRemaining = Math.max(0, maxStrokesPerTurn - currentTurnStrokeCount);
@@ -1543,9 +1586,6 @@ const GameRoom = () => {
     : 0;
   const votingSecondsRemaining = room?.votingEndsAt
     ? Math.max(0, Math.ceil((room.votingEndsAt - now) / 1000))
-    : 0;
-  const turnTimePercent = hasStarted && turnDurationSeconds > 0
-    ? Math.max(0, Math.min(100, (turnSecondsRemaining / turnDurationSeconds) * 100))
     : 0;
   const votingPlayers = ((room?.players || visibleMembers) as RoomMember[]).filter((player) => player.id !== activeUser?.id);
   const drawBlockMessage = !hasStarted
@@ -1591,9 +1631,9 @@ const GameRoom = () => {
   }, [autoSubmit, hasStarted, isMyTurn, strokesRemaining, room?.currentPlayerId, room?.currentRound])
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#fffefa] text-[#191923] [font-family:'Avenir_Next','Segoe_UI',ui-sans-serif,system-ui,sans-serif]">
-      <header className="sticky top-0 z-40 border-b border-[#e5e7eb] bg-[#fffefa]/95 px-4 py-3 backdrop-blur">
-        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3">
+    <main className={`relative min-h-screen overflow-hidden bg-[#f7f6f2] pt-[30px] text-[#191923] [font-family:'Avenir_Next','Segoe_UI',ui-sans-serif,system-ui,sans-serif] ${!hasStarted && !isVotingPhase && !isResultPhase ? "lg:flex lg:min-h-svh lg:flex-col lg:justify-center lg:py-8" : "lg:pt-[60px]"}`}>
+      <header className="relative z-40 mx-auto w-full max-w-[1500px] px-3 pb-5 sm:px-6 lg:px-8">
+        <div className="mx-auto flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
@@ -1609,30 +1649,8 @@ const GameRoom = () => {
               <h1 className="truncate text-2xl font-bold tracking-[-0.04em]">
                 Coloodle<span className="text-[#c57f00]">.</span>
               </h1>
-              <p role="status" className="text-xs text-[#61616a] sm:border-l sm:border-[#e7e3da] sm:pl-5 sm:text-sm">
-                {hasStarted ? "Drawing" : isVotingPhase ? "Voting" : isResultPhase ? "Results" : "Waiting room"}
-                <span className="mx-2 text-[#b9b5ab]" aria-hidden="true">/</span>
-                {connectedMembersCount} player{connectedMembersCount === 1 ? "" : "s"}
-              </p>
+
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={CopyRoomCode}
-              className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-[#e5e7eb] bg-white px-3 py-2 text-sm font-semibold text-[#334155] elev-1 transition hover:border-[#0f172a] hover:text-[#0f172a] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#956008]"
-              aria-label="Copy room invite"
-            >
-              <Copy className="h-4 w-4" aria-hidden="true" />
-              <span className="hidden sm:inline">Invite friends</span>
-            </button>
-            <button
-              onClick={LeaveRoom}
-              className="inline-flex items-center gap-2 rounded-lg border border-[#e5e7eb] bg-white px-3 py-2 text-sm font-semibold text-[#334155] elev-1 transition hover:border-[#0f172a] hover:text-[#0f172a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f766e]"
-            >
-              <LogOut className="h-4 w-4" />
-              Leave
-            </button>
           </div>
         </div>
       </header>
@@ -1655,7 +1673,23 @@ const GameRoom = () => {
         />
       ) : null}
 
-      <div className="relative mx-auto grid max-w-[1600px] gap-4 px-4 pb-24 pt-4 sm:py-4 xl:grid-cols-[300px_minmax(0,1fr)_300px]">
+      <div className="relative mx-auto w-full max-w-[1500px] px-3 pb-24 sm:px-6 sm:pb-10 lg:px-8 lg:pb-0">
+        {hasStarted || isVotingPhase || isResultPhase ? (
+        <div className="mb-2 grid min-h-16 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 gap-y-1 rounded-lg border border-[#e4e1da] bg-white px-4 py-3 sm:grid-cols-[180px_minmax(0,1fr)_240px]">
+          <div className="flex items-center gap-3 text-sm font-semibold">
+            {hasStarted ? <span className="flex h-10 min-w-10 items-center justify-center rounded-full border-2 border-[#ffbd32] px-1 tabular-nums" aria-label={`${turnSecondsRemaining} seconds remaining`}>{turnSecondsRemaining}</span> : <Clock className="h-5 w-5 text-[#956008]" aria-hidden="true" />}
+            <span>{hasStarted ? `Round ${room?.currentRound || 1} / ${room?.maxRounds || 1}` : isVotingPhase ? "Time to vote" : isResultPhase ? "Game over" : "Waiting room"}</span>
+          </div>
+          <div className="min-w-0 text-right sm:text-center">
+            {hasStarted && roleInfo ? <>
+              <p className="text-xs text-[#777780]">{roleInfo.role === "imposter" ? "Your role" : "Your secret word"} · {roleInfo.category}</p>
+              <h2 className="break-words text-xl font-bold tracking-tight">{roleInfo.role === "imposter" ? "Imposter" : roleInfo.word}</h2>
+            </> : <p className="text-sm text-[#777780]">{isVotingPhase ? "Who was faking it?" : isResultPhase ? "The secret is out." : "Everyone draws. Someone’s faking."}</p>}
+          </div>
+          <p className="col-span-2 text-right text-xs text-[#61616a] sm:col-span-1 sm:text-sm" role="status">{hasStarted ? turnHeading : isVotingPhase ? `${votingSecondsRemaining}s to vote` : `${connectedMembersCount} player${connectedMembersCount === 1 ? "" : "s"} connected`}</p>
+        </div>
+        ) : null}
+        <div className="grid items-stretch gap-2 sm:grid-cols-[180px_minmax(0,1fr)] lg:grid-cols-[190px_minmax(0,1fr)_250px] xl:grid-cols-[220px_minmax(0,1fr)_300px]">
         <aside
           id="mobile-room-menu"
           className={`fixed inset-y-0 left-0 z-[60] order-1 w-[min(88vw,360px)] space-y-4 overflow-y-auto bg-[#fffefa] p-4 shadow-2xl transition-transform duration-200 sm:visible sm:static sm:z-auto sm:w-auto sm:translate-x-0 sm:overflow-visible sm:bg-transparent sm:p-0 sm:shadow-none sm:transition-none xl:order-1 ${isMobileRoomMenuOpen ? "visible translate-x-0" : "invisible -translate-x-full"}`}
@@ -1677,42 +1711,14 @@ const GameRoom = () => {
               <X className="h-4 w-4" />
             </button>
           </div>
-          {hasStarted ? (
-            <Panel className="hidden !border-[#e7e3da] sm:block">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs text-[#777780]">{roleInfo ? (roleInfo.role === "imposter" ? "Your role" : "Your word") : "Current turn"}</p>
-                <span className="text-xs font-medium tabular-nums text-[#61616a]">
-                  Round {room?.currentRound || 1}/{room?.maxRounds || 1}
-                </span>
-              </div>
-              {roleInfo ? (
-                <div className="mt-2">
-                    <h2 className="break-words text-2xl font-semibold leading-8 tracking-[-0.03em] text-[#191923]">
-                      {roleInfo.role === "imposter" ? "Imposter" : roleInfo.word}
-                    </h2>
-                  <dl className="mt-1 flex flex-wrap items-baseline gap-x-2 text-xs leading-5">
-                    <dt className="text-[#777780]">Category</dt>
-                    <dd className="min-w-0 break-words text-[#61616a]">{roleInfo.category}</dd>
-                  </dl>
-                  {roleInfo.role === "imposter" ? (
-                    <p className="mt-2 text-xs leading-5 text-[#777780]">Blend in. Only the artists know the word.</p>
-                  ) : null}
-                </div>
-              ) : null}
-              <p className="mt-4 break-words border-t border-[#eeeae2] pt-3 text-sm leading-5 text-[#61616a]">
-                {turnHeading}
-              </p>
-            </Panel>
-          ) : null}
-
-          <Panel className="!border-[#e7e3da]">
+          <Panel className="!border-[#e7e3da] !pb-0">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-[#191923]">Players</h2>
               <span className="text-xs tabular-nums text-[#777780]">
-                {connectedMembersCount} online
+                {connectedMembersCount}
               </span>
             </div>
-            <div className="cld-scroll mt-2 max-h-[420px] overflow-y-auto">
+            <div className="cld-scroll -mx-3 mt-3 max-h-[520px] overflow-y-auto border-t border-[#eeeae2]">
               {visibleMembers.length > 0 ? (
                 visibleMembers.map((item, index) => {
                   const isCurrentMember = item.id === activeUser?.id;
@@ -1722,13 +1728,13 @@ const GameRoom = () => {
                   return (
                     <div
                       key={`${item.id ?? item.username ?? "member"}-${index}`}
-                      className="flex items-center gap-3 border-b border-[#dcd7cd] py-4"
+                      className={`flex items-center gap-2.5 border-b border-[#eeeae2] px-3 py-2.5 last:border-b-0 ${isTurnMember ? "bg-[#fff7df]" : ""}`}
                     >
                       <div className="relative shrink-0">
                         <AvatarBadge
                           avatar={item.avatarCode}
                           name={item.username}
-                          className="h-11 w-11 rounded-xl"
+                          className="h-9 w-9 rounded-lg"
                         />
                         <span role="img" aria-label={item.connected ? "Connected" : "Offline"} title={item.connected ? "Connected" : "Offline"} className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white ${isTurnMember
                           ? "bg-[#10b981] shadow-[0_0_0_3px_rgba(16,185,129,0.18)]"
@@ -1762,92 +1768,33 @@ const GameRoom = () => {
                 </div>
               )}
             </div>
-            {!hasStarted && !isVotingPhase && !isResultPhase ? (
-              <button
-                type="button"
-                onClick={CopyRoomCode}
-                className="mt-1 flex min-h-11 w-full items-center justify-between gap-3 pt-2 text-left text-xs font-medium text-[#61616a] transition hover:text-[#191923] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#956008]"
-              >
-                Invite friends
-                <Copy className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              </button>
-            ) : null}
+
           </Panel>
         </aside>
 
-        <section className="order-2 min-w-0 space-y-4 xl:order-2">
+        <section className="order-2 min-w-0 sm:col-start-2 lg:col-auto">
           {!hasStarted && !isVotingPhase && !isResultPhase ? (
-            <WaitingRoomCanvas
-              adminName={visibleAdmin?.username}
-              connectedMembersCount={connectedMembersCount}
+            <LobbyStartControls
               isAdminUser={isAdminUser}
+              canStartGame={canStartGame && !isUpdatingSettings}
+              isUpdatingSettings={isUpdatingSettings}
+              connectedMembersCount={connectedMembersCount}
+              settings={room?.settings}
+              turnDurationSeconds={turnDurationSeconds}
+              maxStrokesPerTurn={maxStrokesPerTurn}
+              onSettingChange={(key, value) => { void UpdateRoomSettings({ [key]: value }); }}
+              onCustomWordsSave={UpdateRoomSettings}
+              onStart={StartGame}
+              onInvite={CopyRoomCode}
+              autoSubmit={autoSubmit}
+              onAutoSubmitChange={setAutoSubmit}
             />
           ) : null}
 
           {hasStarted ? (
             <>
-              <Panel className={`relative overflow-hidden border-2 p-3 transition-[border-color,box-shadow] duration-200 ${isMyTurn
-                ? "!border-2 !border-[#22c55e] ring-2 ring-[#86efac] shadow-[0_12px_30px_rgba(22,163,74,0.16)]"
-                : "border-[#0f172a] elev-3"
-                }`}>
-                <div className="mb-2 border-b border-[#eeeae2] pb-2 sm:hidden">
-                  <div className="flex items-center gap-2">
-                    <AvatarBadge
-                      avatar={currentPlayerAvatar}
-                      name={currentPlayerName}
-                      className="h-6 w-6 shrink-0 rounded-full"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <h2 className="truncate text-[13px] font-semibold leading-5 text-[#191923]" title={turnHeading}>
-                        {turnHeading}
-                      </h2>
-                    </div>
-                    <span className="shrink-0 text-[11px] tabular-nums text-[#777780]" aria-label={`Round ${room?.currentRound || 1} of ${room?.maxRounds || 1}`}>
-                      R{room?.currentRound || 1}/{room?.maxRounds || 1}
-                    </span>
-                    <span
-                      className="inline-flex shrink-0 items-center gap-1 rounded-md bg-[#ecfdf5] px-1.5 py-1 text-xs font-semibold text-[#047857] tabular-nums"
-                      aria-label={`${turnSecondsRemaining} seconds remaining in this turn`}
-                    >
-                      <Clock className="h-3 w-3" aria-hidden="true" />
-                      {turnSecondsRemaining}s
-                    </span>
-                  </div>
-                  {roleInfo ? (
-                    <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs leading-5">
-                      <p className="min-w-0 break-words font-semibold text-[#191923]">
-                        {roleInfo.role === "imposter" ? "You’re the imposter" : `Word: ${roleInfo.word}`}
-                      </p>
-                      <p className="min-w-0 break-words text-[#777780]">Category: {roleInfo.category}</p>
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className="mb-3 hidden sm:flex">
-                  <div className={`inline-flex min-w-0 max-w-full items-center gap-2 rounded-full border py-1.5 pl-1.5 pr-3 elev-1 ${isMyTurn
-                    ? "border-[#22c55e] bg-[#dcfce7] shadow-[0_0_0_3px_rgba(34,197,94,0.14)]"
-                    : "border-[#e5e7eb] bg-white"
-                    }`}>
-                    <AvatarBadge
-                      avatar={currentPlayerAvatar}
-                      name={currentPlayerName}
-                      className="h-8 w-8 rounded-full"
-                    />
-                    <span className="min-w-0 truncate text-sm font-bold text-[#0f172a]">
-                      {currentPlayerName}
-                    </span>
-                    {isMyTurn ? (
-                      <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold text-[#166534]">
-                        <span className="h-3 w-3 animate-pulse rounded-full bg-[#16a34a] ring-2 ring-white shadow-[0_0_0_3px_rgba(22,163,74,0.22)]" />
-                        Your turn
-                      </span>
-                    ) : (
-                      <span className="shrink-0 text-xs font-medium text-[#64748b]">Drawing</span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="relative mx-auto w-full max-w-[860px] overflow-hidden rounded-xl bg-white">
+              <Panel className="relative overflow-hidden !rounded-b-none !p-0">
+                <div className="relative mx-auto w-full overflow-hidden bg-white">
                   <canvas
                     ref={canvasRef}
                     className="block h-[clamp(340px,58svh,620px)] w-full bg-white sm:h-auto"
@@ -1860,10 +1807,6 @@ const GameRoom = () => {
                     onPointerUp={onMouseUp}
                     onPointerCancel={onMouseUp}
                   />
-                  <div className="pointer-events-none absolute left-3 top-3 hidden items-center gap-1.5 rounded-md border border-[#e5e7eb] bg-white/90 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748b] sm:inline-flex">
-                    <Brush className="h-3 w-3" />
-                    Canvas
-                  </div>
                   {selectedStrokeInfo ? (
                     <>
                       <div
@@ -1893,7 +1836,11 @@ const GameRoom = () => {
                 </div>
               </Panel>
 
-              <Panel>
+              <Panel className="!rounded-t-none !border-t-0">
+                <div className="mb-3 flex flex-wrap justify-between gap-2 border-b border-[#eeeae2] pb-3 text-xs text-[#61616a]">
+                  <span>{isMyTurn ? `${strokesRemaining} stroke${strokesRemaining === 1 ? "" : "s"} left this turn` : turnHeading}</span>
+                  <span>Actions {room?.submittedTurns || 0} / {room?.totalTurnsBeforeVote || 0}</span>
+                </div>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap gap-2">
                     {toolOptions.map((tool) => {
@@ -2035,22 +1982,17 @@ const GameRoom = () => {
           ) : null}
         </section>
 
-        <aside className="order-3 space-y-4">
+        <aside className="order-3 min-h-0 sm:col-start-2 lg:col-auto lg:relative">
           <Panel
             id="mobile-chat"
-            className={`!border-[#e7e3da] ${isMobileChatOpen ? "fixed inset-x-3 bottom-20 z-[70] flex max-h-[calc(100vh-7rem)] flex-col shadow-2xl" : "hidden"} sm:static sm:block sm:max-h-none`}
+            className={`!border-[#e7e3da] ${isMobileChatOpen ? "fixed inset-x-3 bottom-20 z-[70] flex max-h-[calc(100dvh-7rem)] flex-col shadow-2xl" : "hidden"} sm:static sm:flex sm:h-80 sm:max-h-none sm:flex-col lg:absolute lg:inset-0 lg:h-full`}
             role={isMobileChatOpen ? "dialog" : undefined}
             aria-modal={isMobileChatOpen ? true : undefined}
+            aria-label="Room chat"
           >
             <div className="flex items-center justify-between gap-3">
-              <h2 className="flex items-center gap-2 font-bold text-[#0f172a]">
-                <MessageCircle className="h-4 w-4 text-[#956008]" />
-                Chat
-              </h2>
+              <h2 className="text-sm font-semibold text-[#191923]">Chat</h2>
               <div className="flex items-center gap-2">
-                <span className="rounded-full border border-[#e5e7eb] bg-[#faf9f6] px-2 py-1 text-xs font-semibold text-[#334155]">
-                  {visibleMessages.length}
-                </span>
                 <button
                   type="button"
                   onClick={closeMobileChat}
@@ -2062,47 +2004,19 @@ const GameRoom = () => {
               </div>
             </div>
 
-            <div ref={chatMessagesRef} className="cld-scroll mt-4 flex h-[min(55vh,24rem)] min-h-0 flex-col gap-3 overflow-y-auto rounded-xl border border-[#e5e7eb] bg-[#faf9f6] p-3 sm:h-64">
+            <div ref={chatMessagesRef} className="cld-scroll -mx-3 mt-3 flex h-[min(55vh,24rem)] min-h-0 flex-1 flex-col overflow-y-auto border-y border-[#eeeae2] py-2">
 
               {visibleMessages.length > 0 ? (
                 visibleMessages.map((item, index) => {
-                  const isMine = item.sender === "you";
-
                   return (
-                    <div
-                      key={`${item.sender ?? "message"}-${index}`}
-                      className={`flex items-end gap-2 ${isMine ? "justify-end" : "justify-start"}`}
-                    >
-                      {!isMine ? (
-                        <AvatarBadge
-                          avatar={item.avatarCode}
-                          name={item.sender}
-                          className="h-8 w-8 rounded-lg"
-                        />
-                      ) : null}
-                      <div
-                        className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-5 ${isMine
-                          ? "bg-[#0f172a] text-white"
-                          : "border border-[#e5e7eb] bg-white text-[#334155]"
-                          }`}
-                      >
-                        <p className={`mb-1 text-[11px] font-semibold ${isMine ? "text-white/80" : "text-[#956008]"}`}>
-                          {item.sender || "Player"}
-                        </p>
-                        <p className="break-words">{item.msg}</p>
-                      </div>
-                      {isMine ? (
-                        <AvatarBadge
-                          avatar={item.avatarCode}
-                          name={item.sender}
-                          className="h-8 w-8 rounded-lg"
-                        />
-                      ) : null}
-                    </div>
+                    <p key={`${item.sender ?? "message"}-${index}`} className="break-words px-3 py-1.5 text-sm leading-5 odd:bg-[#f8f7f4]">
+                      <span className={`font-semibold ${item.sender === "you" ? "text-[#956008]" : "text-[#191923]"}`}>{item.sender || "Player"}: </span>
+                      {item.msg}
+                    </p>
                   );
                 })
               ) : (
-                <div className="flex h-full items-center justify-center text-center text-sm font-medium text-[#64748b]">
+                <div className="flex h-full items-end px-3 pb-2 text-xs text-[#777780]">
                   No messages yet
                 </div>
               )}
@@ -2117,13 +2031,14 @@ const GameRoom = () => {
                     SendGroupMessage()
                   }
                 }}
-                placeholder="Message"
+                placeholder="Say something…"
+                aria-label="Chat message"
                 maxLength={280}
-                className="min-w-0 flex-1 rounded-xl border border-[#e5e7eb] bg-white px-3 py-2 text-sm text-[#0f172a] outline-none ring-[#956008]/20 transition placeholder:text-[#94a3b8] focus:border-[#956008] focus:ring-4"
+                className="min-w-0 flex-1 rounded-md border border-[#e5e7eb] bg-white px-3 py-2 text-sm text-[#0f172a] outline-none ring-[#956008]/20 transition placeholder:text-[#94a3b8] focus:border-[#956008] focus:ring-4"
               />
               <button
                 type="submit"
-                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#0f172a] text-white elev-1 transition hover:bg-[#334155]"
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#191923] text-white transition hover:bg-[#334155]"
                 aria-label="Send chat"
                 onClick={SendGroupMessage}
               >
@@ -2132,74 +2047,8 @@ const GameRoom = () => {
             </div>
           </Panel>
 
-          {hasStarted ? (
-            <Panel>
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="flex items-center gap-2 font-bold text-[#0f172a]">
-                  <Clock className="h-4 w-4 text-[#0f766e]" />
-                  Turn timer
-                </h2>
-                <span className="inline-flex items-center gap-1.5 rounded-lg border border-[#bbf7d0] bg-[#ecfdf5] px-2.5 py-1 text-sm font-bold text-[#047857] tabular-nums">
-                  {turnSecondsRemaining}s
-                </span>
-              </div>
-              <div className="mt-3">
-                <div className="mb-1 flex justify-between text-xs font-medium text-[#64748b]">
-                  <span>Turn timer</span>
-                  <span>{turnDurationSeconds}s</span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-[#e5e7eb]">
-                  <div
-                    className="h-full rounded-full bg-[#10b981] transition-[width]"
-                    style={{ width: `${turnTimePercent}%` }}
-                  />
-                </div>
-              </div>
-              <div className="mt-3">
-                <div className="mb-1 flex justify-between text-xs font-medium text-[#64748b]">
-                  <span>Action progress</span>
-                  <span>
-                    {room?.submittedTurns || 0}/{room?.totalTurnsBeforeVote || 0}
-                  </span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-[#e5e7eb]">
-                  <div
-                    className="h-full rounded-full bg-[#0f172a]"
-                    style={{
-                      width: room?.totalTurnsBeforeVote
-                        ? `${Math.min(100, ((room.submittedTurns || 0) / room.totalTurnsBeforeVote) * 100)}%`
-                        : "0%",
-                    }}
-                  />
-                </div>
-              </div>
-              <div className="mt-3">
-                <div className="mb-1 flex justify-between text-xs font-medium text-[#64748b]">
-                  <span>Strokes this turn</span>
-                  <span>{currentTurnStrokeCount}/{maxStrokesPerTurn}</span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-[#e5e7eb]">
-                  <div
-                    className="h-full rounded-full bg-[#f97316]"
-                    style={{ width: `${Math.min(100, (currentTurnStrokeCount / maxStrokesPerTurn) * 100)}%` }}
-                  />
-                </div>
-              </div>
-            </Panel>
-          ) : null}
-
-          {!hasStarted && !isVotingPhase && !isResultPhase ? (
-            <LobbyStartControls
-              isAdminUser={isAdminUser}
-              canStartGame={canStartGame}
-              turnDurationSeconds={turnDurationSeconds}
-              maxStrokesPerTurn={maxStrokesPerTurn}
-              onTurnDurationChange={setTurnDurationSeconds}
-              onMaxStrokesChange={setMaxStrokesPerTurn}
-              onStart={StartGame}
-            />
-          ) : null}
         </aside>
+        </div>
       </div>
 
       <button
@@ -2264,278 +2113,132 @@ const Panel = ({
   className = "",
   ...props
 }: React.ComponentPropsWithoutRef<"section">) => (
-  <section {...props} className={`rounded-2xl border border-[#e5e7eb] bg-white p-4 elev-2 ${className}`}>
+  <section {...props} className={`rounded-md border border-[#e4e1da] bg-white p-3 ${className}`}>
     {children}
   </section>
 );
 
-// Practice drawing is intentionally isolated from game strokes, stores, and sockets.
-// The fixed backing size preserves the sketch when the responsive layout resizes.
-const WaitingRoomCanvas = ({
-  adminName,
-  connectedMembersCount,
-  isAdminUser,
-}: {
-  adminName?: string;
-  connectedMembersCount: number;
-  isAdminUser: boolean;
-}) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const pointerRef = useRef<number | null>(null);
-  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
-  const [tool, setTool] = useState<"brush" | "eraser">("brush");
-  const [color, setColor] = useState(colorOptions[0]);
-  const [size, setSize] = useState(4);
-  const neededPlayers = Math.max(0, MIN_PLAYERS_TO_START - connectedMembersCount);
-
-  const drawTo = (canvas: HTMLCanvasElement, clientX: number, clientY: number) => {
-    const context = canvas.getContext("2d");
-    if (!context) return;
-    const bounds = canvas.getBoundingClientRect();
-    if (!bounds.width || !bounds.height) return;
-    const point = {
-      x: (clientX - bounds.left) * canvas.width / bounds.width,
-      y: (clientY - bounds.top) * canvas.height / bounds.height,
-    };
-    const previous = lastPointRef.current;
-    context.beginPath();
-    if (previous) {
-      context.moveTo(previous.x, previous.y);
-      context.lineTo(point.x, point.y);
-      context.stroke();
-    } else {
-      context.arc(point.x, point.y, context.lineWidth / 2, 0, Math.PI * 2);
-      context.fill();
-    }
-    lastPointRef.current = point;
-  };
-
-  const startDrawing = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!event.isPrimary || event.button !== 0 || pointerRef.current !== null) return;
-    const canvas = event.currentTarget;
-    const context = canvas.getContext("2d");
-    if (!context) return;
-    const bounds = canvas.getBoundingClientRect();
-    if (!bounds.width) return;
-    event.preventDefault();
-    canvas.setPointerCapture(event.pointerId);
-    pointerRef.current = event.pointerId;
-    lastPointRef.current = null;
-    context.globalCompositeOperation = tool === "eraser" ? "destination-out" : "source-over";
-    context.strokeStyle = color;
-    context.fillStyle = color;
-    context.lineWidth = (tool === "eraser" ? size * 4 : size) * canvas.width / bounds.width;
-    context.lineCap = "round";
-    context.lineJoin = "round";
-    drawTo(canvas, event.clientX, event.clientY);
-  };
-
-  const moveDrawing = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (pointerRef.current !== event.pointerId) return;
-    const samples = event.nativeEvent.getCoalescedEvents?.() || [];
-    for (const sample of samples.length ? samples : [event.nativeEvent]) {
-      drawTo(event.currentTarget, sample.clientX, sample.clientY);
-    }
-  };
-
-  const stopDrawing = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (pointerRef.current !== event.pointerId) return;
-    if (event.type === "pointerup") drawTo(event.currentTarget, event.clientX, event.clientY);
-    pointerRef.current = null;
-    lastPointRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-  };
-
-  const clearCanvas = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    if (pointerRef.current !== null && canvas.hasPointerCapture(pointerRef.current)) {
-      canvas.releasePointerCapture(pointerRef.current);
-    }
-    pointerRef.current = null;
-    lastPointRef.current = null;
-    canvas.getContext("2d")?.clearRect(0, 0, canvas.width, canvas.height);
-  };
-
-  return (
-    <section className="overflow-hidden rounded-2xl border border-[#e7e3da] bg-white text-[#191923] elev-2">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#eeeae2] px-4 py-3">
-        <h2 className="flex items-center gap-2 text-sm font-semibold">
-          <Brush className="h-4 w-4 text-[#956008]" aria-hidden="true" />
-          Practice while waiting
-        </h2>
-        <span className="text-xs text-[#777780]">Only visible to you</span>
-      </div>
-
-      <div className="p-3">
-        <div className="overflow-hidden rounded-lg bg-white">
-          <canvas
-            ref={canvasRef}
-            width={1200}
-            height={800}
-            aria-label="Private practice canvas. Draw with a mouse, pen, or touch."
-            className="block aspect-[3/2] w-full touch-none select-none"
-            style={{ cursor: tool === "eraser" ? eraserCursor : "crosshair" }}
-            onPointerDown={startDrawing}
-            onPointerMove={moveDrawing}
-            onPointerUp={stopDrawing}
-            onPointerCancel={stopDrawing}
-            onLostPointerCapture={stopDrawing}
-          >
-            Your browser does not support the drawing canvas.
-          </canvas>
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-[#eeeae2] pt-3" role="group" aria-label="Practice drawing tools">
-          <div className="flex items-center gap-1">
-            {([{ value: "brush", label: "Brush", icon: Brush }, { value: "eraser", label: "Eraser", icon: Eraser }] as const).map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                title={option.label}
-                aria-label={option.label}
-                aria-pressed={tool === option.value}
-                onClick={() => setTool(option.value)}
-                className={`inline-flex h-11 w-11 items-center justify-center rounded-lg border transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#956008] ${tool === option.value ? "border-[#ffbd32] bg-[#ffbd32] text-[#191923] elev-1" : "border-[#e7e3da] bg-white text-[#61616a] hover:bg-[#fffefa]"}`}
-              >
-                <option.icon className="h-4 w-4" aria-hidden="true" />
-              </button>
-            ))}
-          </div>
-          <div className="flex flex-wrap items-center" role="group" aria-label="Brush color">
-            {colorOptions.map((option) => (
-              <button
-                key={option}
-                type="button"
-                aria-label={`Use color ${option}`}
-                aria-pressed={color === option}
-                onClick={() => { setColor(option); setTool("brush"); }}
-                className="flex h-10 w-9 items-center justify-center rounded-lg focus-visible:outline-2 focus-visible:outline-[#956008]"
-              >
-                <span className={`h-5 w-5 rounded-full border-2 ${color === option ? "border-white ring-2 ring-[#191923]" : "border-black/10"}`} style={{ backgroundColor: option }} />
-              </button>
-            ))}
-          </div>
-          <label className="flex min-h-11 items-center gap-2 text-xs font-medium text-[#61616a]">
-            Size
-            <input type="range" min={2} max={20} value={size} onChange={(event) => setSize(Number(event.currentTarget.value))} className="w-20 accent-[#191923]" />
-            <span className="w-8 tabular-nums">{size} px</span>
-          </label>
-          <button type="button" onClick={clearCanvas} title="Clear canvas" aria-label="Clear canvas" className="ml-auto inline-flex h-11 w-11 items-center justify-center rounded-lg border border-[#e7e3da] text-[#61616a] transition hover:bg-[#faf9f6] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#956008]">
-            <RotateCcw className="h-4 w-4" aria-hidden="true" />
-          </button>
-        </div>
-        <div className="mt-3 flex flex-wrap justify-between gap-x-4 gap-y-1 text-xs leading-5 text-[#777780]">
-          <p role="status">
-            {neededPlayers > 0
-              ? `Invite ${neededPlayers} more player${neededPlayers === 1 ? "" : "s"} to start.`
-              : isAdminUser
-                ? "Ready when you are. Start using host controls."
-                : `Waiting for ${adminName || "the host"} to start.`}
-          </p>
-          <p>Practice clears when the game starts.</p>
-        </div>
-      </div>
-    </section>
-  );
-};
-
 const LobbyStartControls = ({
-  isAdminUser,
-  canStartGame,
-  turnDurationSeconds,
-  maxStrokesPerTurn,
-  onTurnDurationChange,
-  onMaxStrokesChange,
-  onStart,
+  isAdminUser, canStartGame, connectedMembersCount, settings, isUpdatingSettings,
+  turnDurationSeconds, maxStrokesPerTurn,
+  onSettingChange, onStart, onInvite, autoSubmit, onAutoSubmitChange, onCustomWordsSave,
 }: {
   isAdminUser: boolean;
   canStartGame: boolean;
+  isUpdatingSettings: boolean;
+  connectedMembersCount: number;
+  settings?: RoomSettingsPayload;
   turnDurationSeconds: number;
   maxStrokesPerTurn: number;
-  onTurnDurationChange: (value: number) => void;
-  onMaxStrokesChange: (value: number) => void;
+  onSettingChange: (key: LobbySettingKey, value: number) => void;
   onStart: () => void;
-}) => (
-  <Panel className="!border-[#e7e3da]">
-    <div className="flex items-center justify-between gap-3">
-      <div>
-        <p className="text-sm font-medium text-[#61616a]">Host controls</p>
-        <h2 className="mt-1 text-lg font-bold text-[#0f172a]">
-          {isAdminUser ? "Start when ready" : "Waiting for host"}
-        </h2>
-      </div>
-      <Crown className="h-5 w-5 text-[#956008]" aria-hidden="true" />
-    </div>
+  onInvite: () => void;
+  autoSubmit: boolean;
+  onAutoSubmitChange: (value: boolean) => void;
+  onCustomWordsSave: (settings: CustomWordSettings) => Promise<boolean>;
+}) => {
+  const savedWords = settings?.customWords ?? "";
+  const savedCategory = settings?.customWordCategory ?? "Custom";
+  const savedOnly = settings?.customWordsOnly ?? false;
+  const [words, setWords] = useState(savedWords);
+  const [category, setCategory] = useState(savedCategory);
+  const [customOnly, setCustomOnly] = useState(savedOnly);
+  const [saveError, setSaveError] = useState("");
 
-    <label className="mt-4 block text-sm font-medium text-[#334155]">
-      Turn seconds
-      <div className="mt-2 flex items-center gap-3">
-        <input
-          type="range"
-          min={5}
-          max={120}
-          value={turnDurationSeconds}
-          disabled={!isAdminUser}
-          onChange={(event) => onTurnDurationChange(Number(event.currentTarget.value))}
-          className="min-w-0 flex-1 accent-[#0f172a] disabled:cursor-not-allowed disabled:opacity-50"
-        />
-        <input
-          type="number"
-          min={5}
-          max={120}
-          value={turnDurationSeconds}
-          disabled={!isAdminUser}
-          onChange={(event) => onTurnDurationChange(Number(event.currentTarget.value))}
-          className="h-10 w-20 rounded-xl border border-[#e5e7eb] bg-white px-3 text-sm text-[#0f172a] outline-none ring-[#956008]/20 transition focus:border-[#956008] focus:ring-4 disabled:cursor-not-allowed disabled:opacity-50"
-        />
-      </div>
-    </label>
+  useEffect(() => {
+    setWords(savedWords);
+    setCategory(savedCategory);
+    setCustomOnly(savedOnly);
+    setSaveError("");
+  }, [savedWords, savedCategory, savedOnly]);
 
-    <label className="mt-4 block text-sm font-medium text-[#334155]">
-      Strokes per turn
-      <div className="mt-2 flex items-center gap-3">
-        <input
-          type="range"
-          min={1}
-          max={3}
-          value={maxStrokesPerTurn}
-          disabled={!isAdminUser}
-          onChange={(event) => onMaxStrokesChange(Math.min(3, Math.max(1, Number(event.currentTarget.value))))}
-          className="min-w-0 flex-1 accent-[#0f172a] disabled:cursor-not-allowed disabled:opacity-50"
-        />
-        <input
-          type="number"
-          min={1}
-          max={3}
-          value={maxStrokesPerTurn}
-          disabled={!isAdminUser}
-          onChange={(event) => onMaxStrokesChange(Math.min(3, Math.max(1, Number(event.currentTarget.value))))}
-          className="h-10 w-20 rounded-xl border border-[#e5e7eb] bg-white px-3 text-sm text-[#0f172a] outline-none ring-[#956008]/20 transition focus:border-[#956008] focus:ring-4 disabled:cursor-not-allowed disabled:opacity-50"
-        />
-      </div>
-      <span className="mt-1 block text-xs font-medium text-[#61616a]">
-        Up to 3 strokes per turn.
-      </span>
-    </label>
+  const hasUnsavedWords = isAdminUser && (words !== savedWords || category !== savedCategory || customOnly !== savedOnly);
+  const draftWords = words.split(/[,\n]/).map((word) => word.trim()).filter(Boolean);
+  const wordCount = isAdminUser ? new Set(draftWords.map((word) => word.toLowerCase())).size : settings?.customWordCount ?? 0;
+  const wordError = wordCount > 100 || draftWords.some((word) => [...word].length > 32)
+    ? "Use up to 100 words, with 32 characters per word."
+    : customOnly && wordCount === 0 ? "Add a word before using custom words only." : "";
+  const saveWords = async () => {
+    setSaveError("");
+    const saved = await onCustomWordsSave({ customWords: words, customWordCategory: category, customWordsOnly: customOnly });
+    if (!saved) setSaveError("Words were not saved. Try again.");
+  };
 
-    {isAdminUser ? (
-      <button
-        onClick={onStart}
-        disabled={!canStartGame}
-        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#ffbd32] px-4 py-3 text-sm font-bold text-[#191923] elev-2 transition hover:bg-[#efad22] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#956008] disabled:cursor-not-allowed disabled:bg-[#f0eee8] disabled:text-[#777780]"
-      >
-        <Play className="h-4 w-4" />
-        Start game
-      </button>
-    ) : (
-      <div className="mt-4 rounded-xl border border-[#e5e7eb] bg-white px-3 py-3 text-sm font-medium text-[#64748b]">
-        Host starts the room after {MIN_PLAYERS_TO_START} players connect.
+  const controlsDisabled = !isAdminUser || isUpdatingSettings;
+  const neededPlayers = Math.max(0, MIN_PLAYERS_TO_START - connectedMembersCount);
+
+  const selectClass = "h-10 w-full rounded-md border border-[#dedee2] bg-white px-3 text-sm font-medium text-[#191923] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#956008] disabled:cursor-not-allowed disabled:bg-[#fafafa] disabled:text-[#777780]";
+  const durationOptions = [...new Set([5, 10, 15, 20, 30, 45, 60, 90, 120, turnDurationSeconds])].sort((a, b) => a - b);
+
+  return (
+    <Panel className="flex min-h-[580px] flex-col !p-3 sm:!p-4 lg:h-[clamp(620px,72svh,720px)]">
+      <h2 className="mb-4 border-b border-[#eeeae2] pb-3 text-sm font-semibold">Game settings</h2>
+      <div className="space-y-2">
+        <label className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-3">
+          <span className="text-sm font-medium">Max players</span>
+          <select value={settings?.maxPlayers ?? defaultGameSettings.maxPlayers} disabled={controlsDisabled} onChange={(event) => onSettingChange("maxPlayers", Number(event.currentTarget.value))} className={selectClass}>
+            {Array.from({ length: 8 }, (_, index) => index + 3).map((value) => <option key={value} value={value} disabled={value < connectedMembersCount}>{value} players</option>)}
+          </select>
+        </label>
+        <label className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-3">
+          <span className="text-sm font-medium">Drawing cycles</span>
+          <select value={settings?.turnCyclesBeforeVote ?? defaultGameSettings.turnCyclesBeforeVote} disabled={controlsDisabled} onChange={(event) => onSettingChange("turnCyclesBeforeVote", Number(event.currentTarget.value))} className={selectClass}>
+            {[1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>{value} {value === 1 ? "cycle" : "cycles"}</option>)}
+          </select>
+        </label>
+        <label className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-3">
+          <span className="text-sm font-medium">Turn duration</span>
+          <select value={turnDurationSeconds} disabled={controlsDisabled} onChange={(event) => onSettingChange("turnDurationSeconds", Number(event.currentTarget.value))} className={selectClass}>
+            {durationOptions.map((value) => <option key={value} value={value}>{value} seconds</option>)}
+          </select>
+        </label>
+        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-3">
+          <span id="lobby-strokes-label" className="text-sm font-medium">Strokes per turn</span>
+          <div role="radiogroup" aria-labelledby="lobby-strokes-label" className="grid grid-cols-3 gap-1 rounded-md bg-[#f3f3f4] p-1">
+            {[1, 2, 3].map((value) => (
+              <label key={value} className="cursor-pointer">
+                <input type="radio" name="lobby-strokes" value={value} checked={maxStrokesPerTurn === value} disabled={controlsDisabled} onChange={() => onSettingChange("maxStrokesPerTurn", value)} aria-label={`${value} ${value === 1 ? "stroke" : "strokes"}`} className="peer sr-only" />
+                <span className="flex h-8 w-full items-center justify-center rounded-md text-sm font-semibold text-[#777780] peer-checked:bg-white peer-checked:text-[#191923] peer-checked:shadow-sm peer-focus-visible:outline-2 peer-focus-visible:outline-[#956008] peer-disabled:cursor-not-allowed peer-disabled:opacity-40">{value}</span>
+              </label>
+            ))}
+          </div>
+        </div>
       </div>
-    )}
-  </Panel>
-);
+      <label className="mt-4 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-3 border-t border-[#eeeae2] pt-4">
+        <span className="text-sm font-medium">Auto-submit my turn</span>
+        <span className="flex items-center gap-2 text-sm text-[#61616a]">
+          <input type="checkbox" checked={autoSubmit} onChange={(event) => onAutoSubmitChange(event.currentTarget.checked)} className="h-4 w-4 cursor-pointer accent-[#c57f00] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#956008]" />
+          <span aria-hidden="true">After my last stroke</span>
+        </span>
+      </label>
+      <div className="mt-4 flex min-h-0 flex-1 flex-col">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <label htmlFor="room-custom-words" className="text-sm font-semibold">Custom words</label>
+          <label className="flex items-center gap-2 text-xs text-[#61616a]">
+            <input type="checkbox" checked={customOnly} disabled={controlsDisabled} onChange={(event) => setCustomOnly(event.currentTarget.checked)} className="h-4 w-4 accent-[#c57f00] disabled:opacity-50" />
+            Use custom words only
+          </label>
+        </div>
+        <textarea id="room-custom-words" value={isAdminUser ? words : ""} disabled={controlsDisabled} maxLength={2000} onChange={(event) => { setWords(event.currentTarget.value); setSaveError(""); }} aria-describedby="room-words-help" aria-invalid={Boolean(wordError || saveError)} placeholder={isAdminUser ? "Pizza, ice cream, birthday cake… Separate words with commas or new lines." : `${wordCount} custom words saved by the host.`} className="min-h-28 w-full flex-1 resize-none rounded-md border border-[#dedee2] bg-white p-3 text-sm leading-6 placeholder:text-[#92929a] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#956008] disabled:bg-[#fafafa]" />
+        <div className="mt-2 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-3">
+          <label htmlFor="room-word-category" className="text-sm">Word category <span className="block text-xs text-[#777780]">The imposter’s clue</span></label>
+          <input id="room-word-category" value={category} disabled={controlsDisabled} maxLength={32} onChange={(event) => setCategory(event.currentTarget.value)} placeholder="e.g. Food" className={selectClass} />
+        </div>
+        <div className="mt-2 flex items-center justify-between gap-3">
+          <p id="room-words-help" className="text-xs text-[#777780]" role="status">{wordError || saveError || `${wordCount} words · 32 characters per word`}</p>
+          {isAdminUser && <button type="button" onClick={() => { void saveWords(); }} disabled={!hasUnsavedWords || controlsDisabled || Boolean(wordError)} className="min-h-9 shrink-0 rounded-md border border-[#dedee2] px-3 text-xs font-semibold hover:bg-[#faf9f6] focus-visible:outline-2 focus-visible:outline-[#956008] disabled:cursor-not-allowed disabled:opacity-40">{isUpdatingSettings ? "Saving…" : hasUnsavedWords ? "Save words" : "Saved"}</button>}
+        </div>
+      </div>
+      <div className="mt-auto pt-3">
+        <p role="status" className="mb-3 text-xs text-[#777780]">{hasUnsavedWords ? "Save your custom words before starting." : neededPlayers > 0 ? `Waiting for ${neededPlayers} more player${neededPlayers === 1 ? "" : "s"}…` : isAdminUser ? "Ready to play." : "Waiting for the host to start."}</p>
+        <div className="flex gap-2">
+          {isAdminUser && <button type="button" onClick={onStart} disabled={!canStartGame || hasUnsavedWords} className="inline-flex min-h-11 flex-[2] items-center justify-center rounded-md bg-[#ffbd32] px-4 text-sm font-bold text-[#191923] transition hover:bg-[#ffca59] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#956008] disabled:cursor-not-allowed disabled:opacity-45">Start game</button>}
+          <button type="button" onClick={onInvite} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-md border border-[#dedee2] bg-white px-4 text-sm font-semibold hover:bg-[#f8f7f4] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#956008]"><Copy className="h-4 w-4" aria-hidden="true" />Invite</button>
+        </div>
+      </div>
+    </Panel>
+  );
+};
 
 const VotingModal = ({
   players,

@@ -2,7 +2,7 @@ import jwt from "jsonwebtoken";
 import { v4 as uuidv4, validate as isValidUuid } from "uuid";
 import cookie from "cookie";
 import { getOptionalIntEnv, getRequiredEnv } from "./env.js";
-import { WORD_BANK } from "./WordBank.js";
+import { normalizeCustomWordSettings, getRoomWordPool } from "./CustomWords.js";
 let socketInstance;
 
 const ActiveUser = new Map();
@@ -11,7 +11,7 @@ const GameState = new Map()
 const ActiveStrokes = new Map();
 const EMPTY_ROOM_CLEANUP_MS = 30000;
 const DEFAULT_HOST_DISCONNECT_GRACE_MS = 30000;
-const MIN_PLAYERS_TO_START = 3;
+const MIN_PLAYERS_TO_START = 2;
 const DEFAULT_MAX_PLAYERS = 6;
 const MIN_MAX_PLAYERS = 3;
 const MAX_MAX_PLAYERS = 10;
@@ -97,6 +97,7 @@ const clampTurnCyclesBeforeVote = (value) => {
 const normalizeRoomSettings = (settings = {}) => {
   return {
     ...settings,
+    ...normalizeCustomWordSettings(settings),
     maxPlayers: clampMaxPlayers(settings.maxPlayers),
     turnCyclesBeforeVote: clampTurnCyclesBeforeVote(settings.turnCyclesBeforeVote),
     maxStrokesPerTurn: clampMaxStrokesPerTurn(settings.maxStrokesPerTurn),
@@ -407,15 +408,18 @@ const InitWs = async (io) => {
     };
   };
 
-  const getRoomSync = (roomId) => {
+  const getRoomSync = (roomId, viewerId) => {
     const room = Rooms.get(roomId);
+    const { customWords = "", ...publicSettings } = room.settings;
 
     return {
       roomId,
       members: getGroupMembers(roomId),
       ...getPublicRoomState(roomId),
       settings: {
-        ...room.settings,
+        ...publicSettings,
+        customWordCount: customWords ? customWords.split(", ").length : 0,
+        ...(viewerId === room.owner.id ? { customWords } : {}),
         owner: room.owner,
       },
       owner: room.owner,
@@ -897,7 +901,7 @@ const InitWs = async (io) => {
     });
 
     socket.on("create-group", (data, callback) => {
-      const ack = typeof callback === "function" ? callback : () => {};
+      const ack = typeof callback === "function" ? callback : () => { };
       const roomId = uuidv4();
       const trimmed = roomId
       const owner = normalizeUser(socket);
@@ -905,8 +909,14 @@ const InitWs = async (io) => {
         ack({ success: false, message: "Unauthorized." });
         return;
       }
+      let settings;
+      try {
+        settings = normalizeRoomSettings(data?.settings || {});
+      } catch (error) {
+        ack({ success: false, message: error.message });
+        return;
+      }
       socket.join(trimmed);
-      const settings = normalizeRoomSettings(data?.settings || {});
       Rooms.set(trimmed, {
         settings,
         cretedAt: Date.now(),
@@ -946,12 +956,12 @@ const InitWs = async (io) => {
         success: true,
         message: "Group created successfully",
         roomId: trimmed,
-        ...getRoomSync(trimmed),
+        ...getRoomSync(trimmed, owner.id),
       })
     });
 
     socket.on("join-group", (data, callback) => {
-      const ack = typeof callback === "function" ? callback : () => {};
+      const ack = typeof callback === "function" ? callback : () => { };
       const roomId = getValidRoomId(data?.id);
       if (!roomId) {
         ack({
@@ -1006,7 +1016,7 @@ const InitWs = async (io) => {
         success: true,
         message: data?.reconnect ? "Room reconnected." : "Joined room successfully.",
         ...(roleInfo ? { roleInfo } : {}),
-        ...getRoomSync(roomId),
+        ...getRoomSync(roomId, joiningUser.id),
       });
 
       if (roleInfo) {
@@ -1021,8 +1031,69 @@ const InitWs = async (io) => {
       emitRoomMembers(roomId);
     });
 
+    socket.on("update-room-settings", (data, callback) => {
+      const ack = typeof callback === "function" ? callback : () => { };
+      const roomId = getValidRoomId(data?.roomId);
+      if (!roomId) {
+        ack({ success: false, message: "Invalid room id." });
+        return;
+      }
+      const room = Rooms.get(roomId);
+      const user = ActiveUser.get(socket.id);
+      if (!room || !user || !isRoomMember(room, user.id) || !socket.rooms.has(roomId)) {
+        ack({ success: false, message: "Join the room before changing settings." });
+        return;
+      }
+      if (room.owner.id !== user.id) {
+        ack({ success: false, message: "Only the host can change room settings." });
+        return;
+      }
+      if (room.phase !== "lobby") {
+        ack({ success: false, message: "Settings cannot change after the game starts." });
+        return;
+      }
+
+      const patch = data?.settings;
+      const limits = {
+        maxPlayers: [MIN_MAX_PLAYERS, MAX_MAX_PLAYERS],
+        turnCyclesBeforeVote: [MIN_TURN_CYCLES_BEFORE_VOTE, MAX_TURN_CYCLES_BEFORE_VOTE],
+        turnDurationSeconds: [MIN_TURN_DURATION_SECONDS, MAX_TURN_DURATION_SECONDS],
+        maxStrokesPerTurn: [MIN_MAX_STROKES_PER_TURN, MAX_MAX_STROKES_PER_TURN],
+      };
+      if (!patch || typeof patch !== "object" || Array.isArray(patch) || !Object.keys(patch).length) {
+        ack({ success: false, message: "Choose a room setting to update." });
+        return;
+      }
+      for (const [key, value] of Object.entries(patch)) {
+        if (["customWords", "customWordCategory", "customWordsOnly"].includes(key)) continue;
+        const range = Object.hasOwn(limits, key) ? limits[key] : null;
+        if (!range || !Number.isInteger(value) || value < range[0] || value > range[1]) {
+          ack({ success: false, message: "Invalid room setting." });
+          return;
+        }
+      }
+      if (patch.maxPlayers !== undefined && patch.maxPlayers < getConnectedMemberCount(room)) {
+        ack({ success: false, message: "Max players cannot be lower than the number of connected players." });
+        return;
+      }
+
+      let customSettings;
+      try {
+        customSettings = normalizeCustomWordSettings({ ...room.settings, ...patch });
+      } catch (error) {
+        ack({ success: false, message: error.message });
+        return;
+      }
+      room.settings = { ...room.settings, ...patch, ...customSettings };
+      room.maxRounds = clampTurnCyclesBeforeVote(room.settings.turnCyclesBeforeVote);
+      room.turnDurationSeconds = clampTurnDurationSeconds(room.settings.turnDurationSeconds ?? room.turnDurationSeconds);
+      room.maxStrokesPerTurn = clampMaxStrokesPerTurn(room.settings.maxStrokesPerTurn);
+      emitRoomState(roomId);
+      ack({ success: true, ...getRoomSync(roomId, user.id) });
+    });
+
     socket.on("start-game", (data, callback) => {
-      const ack = typeof callback === "function" ? callback : () => {};
+      const ack = typeof callback === "function" ? callback : () => { };
       const roomId = getValidRoomId(data?.roomId || data?.id);
       if (!roomId) {
         ack({ success: false, message: "Invalid room id." });
@@ -1055,7 +1126,7 @@ const InitWs = async (io) => {
         return;
       }
 
-      const wordData = getRandomItem(WORD_BANK);
+      const wordData = getRandomItem(getRoomWordPool(room.settings));
       const turnOrder = shuffle(connectedMembers.map((member) => member.id));
       const imposter = getRandomItem(connectedMembers);
       const maxRounds = clampTurnCyclesBeforeVote(room.settings?.turnCyclesBeforeVote);
@@ -1100,7 +1171,7 @@ const InitWs = async (io) => {
       ack({
         success: true,
         message: "Game started.",
-        ...getRoomSync(roomId),
+        ...getRoomSync(roomId, user.id),
         roleInfo: getRoleInfo(room, user.id),
       });
     });
@@ -1216,7 +1287,7 @@ const InitWs = async (io) => {
     })
 
     socket.on("submit-turn", (data, callback) => {
-      const ack = typeof callback === "function" ? callback : () => {};
+      const ack = typeof callback === "function" ? callback : () => { };
       const user = ActiveUser.get(socket.id);
       const roomId = getValidRoomId(data?.roomId || data?.id);
       if (!roomId) {
@@ -1236,12 +1307,12 @@ const InitWs = async (io) => {
       ack({
         success: true,
         message: "Turn submitted.",
-        ...getRoomSync(roomId),
+        ...getRoomSync(roomId, user.id),
       });
     })
 
     socket.on("submit-vote", (data, callback) => {
-      const ack = typeof callback === "function" ? callback : () => {};
+      const ack = typeof callback === "function" ? callback : () => { };
       const user = ActiveUser.get(socket.id);
       const roomId = getValidRoomId(data?.roomId || data?.id);
       if (!roomId) {
@@ -1281,7 +1352,7 @@ const InitWs = async (io) => {
       ack({
         success: true,
         message: "Vote submitted.",
-        ...getRoomSync(roomId),
+        ...getRoomSync(roomId, user.id),
       });
     })
 
