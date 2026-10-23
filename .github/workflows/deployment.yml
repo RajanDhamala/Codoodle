@@ -1,7 +1,7 @@
 name: Deployment
 
 on:
-  pull_request:
+  push:
     branches: ["prod"]
 
 jobs:
@@ -34,16 +34,16 @@ jobs:
         env:
           VITE_API_URL: /api
 
-      - name: Copy files to VPS
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USERNAME }}
-          password: ${{ secrets.PASSWORD }}
-          port: ${{ secrets.PORT }}
-          source: "apps/web/dist/*"
-          target: "/var/www/codoodle/"
-          strip_components: 3
+      # - name: Copy files to VPS
+      #   uses: appleboy/scp-action@v0.1.7
+      #   with:
+      #     host: ${{ secrets.HOST }}
+      #     username: ${{ secrets.USERNAME }}
+      #     password: ${{ secrets.PASSWORD }}
+      #     port: ${{ secrets.PORT }}
+      #     source: "apps/web/dist/*"
+      #     target: "/var/www/codoodle/"
+      #     strip_components: 3
 
   api:
     name: api
@@ -76,7 +76,7 @@ jobs:
         working-directory: apps/api
 
       - name: Login to GitHub Container Registry
-        if: github.event_name == 'pull_request'
+        if: true
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -93,19 +93,20 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: ./apps/api
-          push: ${{ github.event_name == 'pull_request' }}
+          push: true
           tags: |
             ${{env.IMAGE_NAME}}:latest
             ${{env.IMAGE_NAME}}:${{github.sha}}
 
-      - name: SSH into VPS and run script
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USERNAME }}
-          password: ${{ secrets.PASSWORD }}
-          port: ${{ secrets.PORT }}
-          script: |
-            whoami
-            pwd
-            # bash /usr/local/bin/coloodle.sh
+      # - name: SSH into VPS and run script
+      #   uses: appleboy/ssh-action@v1
+      #   with:
+      #     host: ${{ secrets.HOST }}
+      #     username: ${{ secrets.USERNAME }}
+      #     password: ${{ secrets.PASSWORD }}
+      #     port: ${{ secrets.PORT }}
+      #     script: |
+      #       whoami
+      #       pwd
+      #       # bash /usr/local/bin/coloodle.sh
+
