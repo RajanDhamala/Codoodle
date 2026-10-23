@@ -1635,6 +1635,7 @@ const GameRoom = () => {
       <header className="relative z-40 mx-auto w-full max-w-[1500px] px-3 pb-5 sm:px-6 lg:px-8">
         <div className="mx-auto flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
+
             <button
               type="button"
               onClick={toggleMobileRoomMenu}
@@ -1693,6 +1694,7 @@ const GameRoom = () => {
         <aside
           id="mobile-room-menu"
           className={`fixed inset-y-0 left-0 z-[60] order-1 w-[min(88vw,360px)] space-y-4 overflow-y-auto bg-[#fffefa] p-4 shadow-2xl transition-transform duration-200 sm:visible sm:static sm:z-auto sm:w-auto sm:translate-x-0 sm:overflow-visible sm:bg-transparent sm:p-0 sm:shadow-none sm:transition-none xl:order-1 ${isMobileRoomMenuOpen ? "visible translate-x-0" : "invisible -translate-x-full"}`}
+
           role={isMobileRoomMenuOpen ? "dialog" : undefined}
           aria-modal={isMobileRoomMenuOpen ? "true" : undefined}
           aria-label="Players and turn information"
@@ -1712,6 +1714,7 @@ const GameRoom = () => {
             </button>
           </div>
           <Panel className="!border-[#e7e3da] !pb-0">
+
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-[#191923]">Players</h2>
               <span className="text-xs tabular-nums text-[#777780]">
@@ -1795,6 +1798,7 @@ const GameRoom = () => {
             <>
               <Panel className="relative overflow-hidden !rounded-b-none !p-0">
                 <div className="relative mx-auto w-full overflow-hidden bg-white">
+
                   <canvas
                     ref={canvasRef}
                     className="block h-[clamp(340px,58svh,620px)] w-full bg-white sm:h-auto"
@@ -1993,6 +1997,7 @@ const GameRoom = () => {
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-sm font-semibold text-[#191923]">Chat</h2>
               <div className="flex items-center gap-2">
+
                 <button
                   type="button"
                   onClick={closeMobileChat}
@@ -2005,6 +2010,7 @@ const GameRoom = () => {
             </div>
 
             <div ref={chatMessagesRef} className="cld-scroll -mx-3 mt-3 flex h-[min(55vh,24rem)] min-h-0 flex-1 flex-col overflow-y-auto border-y border-[#eeeae2] py-2">
+
 
               {visibleMessages.length > 0 ? (
                 visibleMessages.map((item, index) => {
@@ -2114,6 +2120,7 @@ const Panel = ({
   ...props
 }: React.ComponentPropsWithoutRef<"section">) => (
   <section {...props} className={`rounded-md border border-[#e4e1da] bg-white p-3 ${className}`}>
+
     {children}
   </section>
 );

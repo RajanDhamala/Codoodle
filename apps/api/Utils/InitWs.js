@@ -3,6 +3,7 @@ import { v4 as uuidv4, validate as isValidUuid } from "uuid";
 import cookie from "cookie";
 import { getOptionalIntEnv, getRequiredEnv } from "./env.js";
 import { normalizeCustomWordSettings, getRoomWordPool } from "./CustomWords.js";
+
 let socketInstance;
 
 const ActiveUser = new Map();
